@@ -53,7 +53,7 @@ type WorkerConfig struct {
 }
 
 // validate checks if the WorkerConfig's fields are correctly set, returning an error if any field is invalid.
-func (wc *WorkerConfig) validate() error {
+func (wc *WorkerConfig) Validate() error {
 	if wc.Concurrency <= 0 {
 		return errors.New("concurrency must be greater than 0")
 	}
@@ -71,7 +71,7 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 	if redisConfig == nil {
 		return nil, ErrInvalidRedisConfig
 	}
-	if err := redisConfig.validate(); err != nil {
+	if err := redisConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidRedisConfig, err)
 	}
 
@@ -90,7 +90,7 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 	}
 
 	// Validate the WorkerConfig.
-	if err := config.validate(); err != nil {
+	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidWorkerConfig, err)
 	}
 

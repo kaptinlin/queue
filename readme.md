@@ -1,12 +1,12 @@
 # Golang Queue Processing Library
 
-This library presents an efficient and flexible solution for queue processing in Go. Designed to schedule and execute background tasks across various scenarios, it leverages the [Asynq](https://github.com/hibiken/asynq) library and supports Redis as a backend store. It features custom error handling and task processing logic to suit different needs.
+This library offers a robust and flexible solution for managing and processing queued jobs in Go applications. Built on top of the [Asynq](https://github.com/hibiken/asynq) framework and using Redis for storage, it provides advanced features like custom error handling, retries, priority queues, rate limiting, and job retention. Whether you're building a simple task runner or a complex distributed system, this library is designed to meet your needs with efficiency and ease.
 
 ## Getting Started
 
 ### Installation
 
-To get started, ensure your Go environment is set up (version 1.21.4 or higher), and install the library using:
+Ensure your Go environment is ready (requires Go version 1.21.4 or higher), then install the library:
 
 ```bash
 go get -u github.com/kaptinlin/queue
@@ -14,7 +14,7 @@ go get -u github.com/kaptinlin/queue
 
 ### Configuring Redis
 
-Configure Redis easily with `NewRedisConfig` and various `WithRedis*` functions:
+Set up your Redis connection with minimal hassle:
 
 ```go
 import "github.com/kaptinlin/queue"
@@ -26,9 +26,9 @@ redisConfig := queue.NewRedisConfig(
 )
 ```
 
-### Initializing the Client
+### Client Initialization
 
-Initialize a client with the Redis configuration:
+Create a client using the Redis configuration:
 
 ```go
 client, err := queue.NewClient(redisConfig)
@@ -37,9 +37,9 @@ if err != nil {
 }
 ```
 
-### Enqueuing Jobs
+### Job Enqueueing
 
-To add a job to the queue, specify its type, payload, and execution options. Use the `Enqueue` method for a quick setup:
+Quickly enqueue jobs specifying their type and payload:
 
 ```go
 jobType := "email:send"
@@ -51,7 +51,7 @@ if err != nil {
 }
 ```
 
-Alternatively, for more detailed job configuration, create a `Job` instance and then enqueue it:
+For more control over job configuration, use a `Job` instance:
 
 ```go
 job := queue.NewJob(jobType, payload, queue.WithDelay(5*time.Second))
@@ -60,9 +60,9 @@ if _, err := client.EnqueueJob(job); err != nil {
 }
 ```
 
-### Registering Handlers
+### Handling Jobs
 
-To process a specific type of job, first define a function to handle the job:
+Define a function to process jobs of a specific type:
 
 ```go
 func handleEmailSendJob(ctx context.Context, job *queue.Job) error {
@@ -71,7 +71,7 @@ func handleEmailSendJob(ctx context.Context, job *queue.Job) error {
 }
 ```
 
-For simplified handler setup, register this function directly with the job type using the `Register` method:
+Register your function for job types you intend to process:
 
 ```go
 worker, err := queue.NewWorker(redisConfig, queue.WithWorkerQueue("default", 1))
@@ -89,20 +89,9 @@ if err := worker.Start(); err != nil {
 }
 ```
 
-For a more detailed setup or to utilize additional handler options, create and register a `Handler` instance:
-
-```go
-handler := queue.NewHandler("email:send", handleEmailSendJob)
-if err := worker.RegisterHandler(handler); err != nil {
-    log.Fatalf("Failed to register handler: %v", err)
-}
-```
-
-This approach allows for either a straightforward or a more customized configuration of job processing, depending on your needs.
-
 ### Graceful Shutdown
 
-Ensure your application shuts down gracefully:
+Ensure a clean shutdown process:
 
 ```go
 func main() {
@@ -119,10 +108,24 @@ func main() {
 }
 ```
 
+## Advanced Features
+
+Learn more about the library's advanced features by exploring our documentation on:
+
+- [Priority Queues](./docs/priorities.md)
+- [Rate Limiting](./docs/rate_limiting.md)
+- [Job Retention](./docs/retention.md)
+- [Retries](./docs/retries.md)
+- [Timeouts and Deadlines](./docs/timeouts_deadline.md)
+
 ## Contributing
 
-Contributions are welcome via GitHub issues or pull requests.
+We welcome contributions! Please submit issues or pull requests on GitHub.
 
 ## License
 
-Licensed under the [MIT License](https://opensource.org/licenses/MIT).
+This library is licensed under the [MIT License](https://opensource.org/licenses/MIT).
+
+## Credits
+
+Special thanks to the creators of [neoq](https://github.com/acaloiaro/neoq) and [Asynq](https://github.com/hibiken/asynq) for inspiring this library.

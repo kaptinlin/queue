@@ -18,7 +18,7 @@ type Handler struct {
 	JobQueue       string
 	JobTimeout     time.Duration
 	RetryDelayFunc func(int, error) time.Duration
-	limiter        *rate.Limiter
+	Limiter        *rate.Limiter
 }
 
 // NewHandler creates a new Handler with the specified job type, processing function, and options.
@@ -44,7 +44,7 @@ type HandlerOption func(*Handler)
 // WithRateLimiter configures a rate limiter for the handler to control the rate of job processing.
 func WithRateLimiter(limiter *rate.Limiter) HandlerOption {
 	return func(h *Handler) {
-		h.limiter = limiter
+		h.Limiter = limiter
 	}
 }
 
@@ -77,7 +77,7 @@ func (h *Handler) Process(ctx context.Context, job *Job) error {
 
 		done := make(chan error, 1)
 		go func() {
-			if h.limiter != nil && !h.limiter.Allow() {
+			if h.Limiter != nil && !h.Limiter.Allow() {
 				done <- &ErrRateLimit{RetryAfter: 10 * time.Second}
 			} else {
 				done <- h.Handle(ctx, job)
@@ -95,7 +95,7 @@ func (h *Handler) Process(ctx context.Context, job *Job) error {
 			return ctx.Err()
 		}
 	} else {
-		if h.limiter != nil && !h.limiter.Allow() {
+		if h.Limiter != nil && !h.Limiter.Allow() {
 			return &ErrRateLimit{RetryAfter: 10 * time.Second}
 		}
 		return h.Handle(ctx, job)

@@ -26,7 +26,7 @@ type RedisConfig struct {
 }
 
 // validate checks if the RedisConfig's fields are correctly set.
-func (c *RedisConfig) validate() error {
+func (c *RedisConfig) Validate() error {
 	if c.Addr == "" {
 		return fmt.Errorf("address cannot be empty")
 	}

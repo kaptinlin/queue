@@ -38,7 +38,7 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 	if redisConfig == nil {
 		return nil, ErrInvalidRedisConfig
 	}
-	if err := redisConfig.validate(); err != nil {
+	if err := redisConfig.Validate(); err != nil {
 		return nil, fmt.Errorf("%w: %s", ErrInvalidRedisConfig, err)
 	}
 
@@ -90,7 +90,7 @@ func WithClientRetention(retention time.Duration) ClientOption {
 }
 
 // Enqueue wraps the process of creating a job and enqueueing it with the Asynq client.
-func (c *Client) Enqueue(jobType string, payload map[string]interface{}, opts ...JobOption) (string, error) {
+func (c *Client) Enqueue(jobType string, payload interface{}, opts ...JobOption) (string, error) {
 	job := NewJob(jobType, payload, opts...)
 	return c.EnqueueJob(job)
 }
@@ -114,7 +114,7 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 	if retention > 0 {
 		taskOpts = append(taskOpts, asynq.Retention(retention))
 	}
-	taskOpts = append(taskOpts, asynq.TaskID(job.Fingerprint))
+	// taskOpts = append(taskOpts, asynq.TaskID(job.Fingerprint))
 
 	// Enqueue the task with the prepared options
 	result, err := c.asynqClient.Enqueue(task, taskOpts...)
