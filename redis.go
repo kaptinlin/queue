@@ -94,6 +94,13 @@ func WithRedisAddress(addr string) RedisOption {
 	}
 }
 
+// WithRedisUsername sets the username for Redis authentication.
+func WithRedisUsername(username string) RedisOption {
+	return func(c *RedisConfig) {
+		c.Username = username
+	}
+}
+
 // WithRedisPassword sets the password for Redis authentication.
 func WithRedisPassword(password string) RedisOption {
 	return func(c *RedisConfig) {
