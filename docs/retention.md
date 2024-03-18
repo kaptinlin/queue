@@ -1,17 +1,14 @@
 # Job Retention
 
-The `queue` library incorporates job retention capabilities, enabling jobs to remain in the queue for a predetermined duration after their successful completion. This feature is instrumental for audit trails, debugging, and post-execution analysis, allowing developers and system administrators to review job outcomes and operational metrics.
+The `queue` library supports job retention, allowing completed jobs to be stored in the queue for a predefined duration. This functionality is crucial for creating audit trails, facilitating debugging, and conducting post-execution analysis. It provides a means for developers and system administrators to examine job results and performance metrics.
 
-## Features
+## Global Job Retention
 
-- **Global Job Retention**: Configure a default retention period applicable to all jobs managed by a client, ensuring a uniform approach across your application.
-- **Individual Job Retention**: Specify retention periods for individual jobs, granting the flexibility to cater to the unique requirements of each job.
+Set a default retention period for all jobs managed by a client. This ensures a consistent retention policy across your application, simplifying management.
 
-## Configuring Job Retention
+### Configuring Global Job Retention
 
-### Global Job Retention
-
-Establish a default retention period for all jobs at the client level, simplifying management and ensuring consistency.
+To define a universal retention period for all jobs:
 
 ```go
 import (
@@ -19,31 +16,36 @@ import (
     "github.com/kaptinlin/queue"
 )
 
+// Initialize a client with a 24-hour job retention period.
 client, err := queue.NewClient(redisConfig, queue.WithClientRetention(24*time.Hour))
 if err != nil {
-    log.Fatalf("Error creating client: %v", err)
+    log.Fatalf("Client initialization error: %v", err)
 }
 ```
 
-This configuration sets a universal 24-hour retention period for all jobs processed by the client.
+With this setup, every job processed by the client will be retained for 24 hours after completion, ensuring uniform job retention behavior.
 
-### Individual Job Retention
+## Individual Job Retention
 
-For jobs needing specific retention settings, override the global default by specifying a retention period at the time of job creation.
+Override the global retention setting for specific jobs, allowing for tailored retention periods based on individual job requirements.
+
+### Setting Retention for Individual Jobs
+
+For jobs that require a distinct retention period:
 
 ```go
-// Example: Retain a job for 48 hours after completion.
+// Retain a specific job for 48 hours post-completion.
 job := queue.NewJob(
-    "task_type", 
-    payload, 
-    queue.WithRetention(48*time.Hour), // Specify the retention period for this job.
+    "job_type",
+    payload,
+    queue.WithRetention(48*time.Hour), // Define the job-specific retention period.
 )
 
-// Enqueue the job with specified retention.
+// Enqueue the job with the custom retention setting.
 id, err := client.EnqueueJob(job)
 if err != nil {
-    log.Fatalf("Error enqueueing job: %v", err)
+    log.Fatalf("Job enqueue error: %v", err)
 }
 ```
 
-This example configures a 48-hour retention period for a particular job, allowing for extended review and analysis.
+This configuration demonstrates how to assign a 48-hour retention period to a particular job, providing flexibility for detailed analysis and review.

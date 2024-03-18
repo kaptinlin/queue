@@ -1,14 +1,14 @@
 # Rate Limiting
 
-The `queue` library provides mechanisms to enforce rate limits at both the worker and handler level, ensuring that tasks are processed at a controlled pace. This feature is critical for managing system load and preventing overuse of resources or external APIs.
+The `queue` library introduces rate limiting capabilities at both the global worker and individual handler levels. This feature is essential for maintaining manageable system loads and preventing the exhaustion of resources or external API limits.
 
-## Global Rate Limiting (Worker Level)
+## Global Rate Limiting
 
-Global rate limiting applies a single rate limit across all tasks processed by a worker, regardless of their type. This is useful for controlling overall system load.
+Applies a uniform rate limit across all tasks handled by a worker, facilitating overall system load management.
 
 ### Configuring Global Rate Limit
 
-To set a global rate limit for a worker, use the `WithWorkerRateLimiter` option when creating the worker.
+Implement a global rate limit using the `WithWorkerRateLimiter` option during worker setup.
 
 ```go
 import (
@@ -16,23 +16,23 @@ import (
     "golang.org/x/time/rate"
 )
 
-// Create a limiter that allows 10 events per second with a burst size of 5.
+// Define a global rate limiter: 10 tasks per second, with bursts of up to 5 tasks.
 limiter := rate.NewLimiter(10, 5)
 
-// Configure worker with the global rate limiter
+// Apply the global rate limiter to the worker.
 worker, err := queue.NewWorker(redisConfig, queue.WithWorkerRateLimiter(limiter))
 if err != nil {
-    log.Fatalf("Failed to create worker: %v", err)
+    log.Fatalf("Worker initialization failed: %v", err)
 }
 ```
 
 ## Handler Level Rate Limiting
 
-Handler level rate limiting applies rate limits to specific task types, allowing fine-grained control over the processing rate of different tasks.
+Enables specific rate limits for distinct task types, providing precision control over task execution rates.
 
-### Setting Rate Limit for a Handler
+### Setting a Handler's Rate Limit
 
-Specify a rate limit when creating a handler using the `WithRateLimiter` option.
+Define a handler-specific rate limit with the `WithRateLimiter` option.
 
 ```go
 import (
@@ -43,22 +43,22 @@ import (
 )
 
 func ProcessEmailJob(ctx context.Context, job *queue.Job) error {
-    // Task logic here
+    // Implement task logic here.
 }
 
-// Create a limiter for this handler: 5 events per minute.
+// Establish a rate limit for the handler: 5 tasks per minute.
 limiter := rate.NewLimiter(rate.Every(1*time.Minute), 5)
 
-// Bind rate limiter to handler for optimal execution control.
+// Apply the rate limiter to the handler for targeted execution control.
 handler := queue.NewHandler("send_email", ProcessEmailJob, queue.WithRateLimiter(limiter))
 
-// Register the handler with the worker.
+// Incorporate the handler into the worker configuration.
 if err := worker.RegisterHandler(handler); err != nil {
-    log.Fatalf("Failed to register handler: %v", err)
+    log.Fatalf("Handler registration failed: %v", err)
 }
 
-// Start processing jobs with rate limits in effect
+// Initiate job processing with the defined rate limits.
 worker.Start()
 ```
 
-Using these configurations, you can effectively manage task execution rates, ensuring your application remains responsive and avoids overloading external dependencies or services.
+These configurations allow you to effectively manage the execution rate of tasks, ensuring your application operates efficiently without overwhelming external services or system resources. This approach helps maintain application responsiveness and reliability.
