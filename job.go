@@ -11,7 +11,8 @@ import (
 
 // Job represents a task that will be executed by a worker.
 type Job struct {
-	Fingerprint string      `json:"fingerprint"` // Unique identifier for the job.
+	ID          string      `json:"id"`          // Unique identifier for the job.
+	Fingerprint string      `json:"fingerprint"` // Unique hash for the job based on its type and payload.
 	Type        string      `json:"type"`        // Type of job, used for handler mapping.
 	Payload     interface{} `json:"payload"`     // Job data.
 	Options     JobOptions  `json:"options"`     // Execution options for the job.
@@ -139,4 +140,9 @@ func (j *Job) DecodePayload(v interface{}) error {
 		return fmt.Errorf("%w: %v", ErrSerializationFailure, err)
 	}
 	return json.Unmarshal(payloadBytes, v)
+}
+
+// SetID sets the job's unique identifier.
+func (j *Job) SetID(id string) {
+	j.ID = id
 }
