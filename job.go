@@ -45,6 +45,13 @@ func NewJob(jobType string, payload interface{}, opts ...JobOption) *Job {
 	return job
 }
 
+// WithOptions dynamically updates the job's options.
+func (j *Job) WithOptions(opts ...JobOption) {
+	for _, opt := range opts {
+		opt(j)
+	}
+}
+
 // JobOption defines a function signature for job configuration options.
 type JobOption func(*Job)
 

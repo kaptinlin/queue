@@ -1,54 +1,49 @@
-# Task Retention
+# Job Retention
 
-The `queue` library includes functionality to retain completed tasks in the queue for inspection or debugging purposes. This feature allows you to specify a retention period for tasks, during which they remain accessible even after successful execution.
+The `queue` library incorporates job retention capabilities, enabling jobs to remain in the queue for a predetermined duration after their successful completion. This feature is instrumental for audit trails, debugging, and post-execution analysis, allowing developers and system administrators to review job outcomes and operational metrics.
 
-## Global Task Retention (Client Level)
+## Features
 
-Global task retention sets a default retention period for all tasks managed by a client. This setting is useful for maintaining a consistent retention policy across your application.
+- **Global Job Retention**: Configure a default retention period applicable to all jobs managed by a client, ensuring a uniform approach across your application.
+- **Individual Job Retention**: Specify retention periods for individual jobs, granting the flexibility to cater to the unique requirements of each job.
 
-### Configuring Global Task Retention
+## Configuring Job Retention
 
-To configure a global retention period for all tasks enqueued by a client, use the `WithClientRetention` option when creating the client.
+### Global Job Retention
+
+Establish a default retention period for all jobs at the client level, simplifying management and ensuring consistency.
 
 ```go
 import (
-    "github.com/kaptinlin/queue"
     "time"
+    "github.com/kaptinlin/queue"
 )
 
-// Specify a default retention period of 24 hours for all tasks.
 client, err := queue.NewClient(redisConfig, queue.WithClientRetention(24*time.Hour))
 if err != nil {
-    log.Fatalf("Failed to create client: %v", err)
+    log.Fatalf("Error creating client: %v", err)
 }
 ```
 
-## Task-Level Retention
+This configuration sets a universal 24-hour retention period for all jobs processed by the client.
 
-Task-level retention allows specifying a retention period for individual tasks, offering flexibility for tasks with different inspection or debugging needs.
+### Individual Job Retention
 
-### Setting Retention for a Task
-
-When enqueuing a task, you can override the global retention setting by specifying a retention period for that task.
+For jobs needing specific retention settings, override the global default by specifying a retention period at the time of job creation.
 
 ```go
-import (
-    "github.com/kaptinlin/queue"
-    "time"
+// Example: Retain a job for 48 hours after completion.
+job := queue.NewJob(
+    "task_type", 
+    payload, 
+    queue.WithRetention(48*time.Hour), // Specify the retention period for this job.
 )
 
-// Create a job with specific options.
-options := queue.JobOptions{
-    // Other options...
-    Retention: 48 * time.Hour, // Retain this job for 48 hours after completion.
-}
-job := queue.NewJob("my_task_type", payload, options)
-
-// Enqueue the job with task-level retention.
+// Enqueue the job with specified retention.
 id, err := client.EnqueueJob(job)
 if err != nil {
-    log.Fatalf("Failed to enqueue job: %v", err)
+    log.Fatalf("Error enqueueing job: %v", err)
 }
 ```
 
-Using these settings, you can control how long completed tasks are retained in the queue, aiding in post-execution analysis and troubleshooting.
+This example configures a 48-hour retention period for a particular job, allowing for extended review and analysis.

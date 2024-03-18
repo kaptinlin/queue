@@ -25,10 +25,12 @@ type Worker struct {
 	asynqServer  *asynq.Server
 	inspector    *asynq.Inspector
 	handlers     map[string]*Handler
+	groups       map[string]*Group
 	mu           sync.Mutex
 	started      atomic.Bool
 	errorHandler WorkerErrorHandler
 	limiter      *rate.Limiter
+	middlewares  []MiddlewareFunc
 }
 
 // WorkerErrorHandler defines an interface for handling errors that occur during job processing.
@@ -96,6 +98,7 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 
 	// Setup the Worker instance.
 	worker := &Worker{
+		groups:       make(map[string]*Group),
 		handlers:     make(map[string]*Handler),
 		errorHandler: config.ErrorHandler,
 		limiter:      config.limiter,
@@ -103,6 +106,29 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 	worker.setupAsynqServer(redisConfig, config)
 
 	return worker, nil
+}
+
+// Use adds a global middleware to the worker.
+func (w *Worker) Use(middleware MiddlewareFunc) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.middlewares = append(w.middlewares, middleware)
+}
+
+// Group retrieves an existing group by name or creates a new one if it doesn't exist.
+func (w *Worker) Group(name string) *Group {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if group, exists := w.groups[name]; exists {
+		return group
+	}
+
+	// Create a new group and store it in the worker's groups map.
+	group := &Group{name: name, worker: w}
+	w.groups[name] = group
+	return group
 }
 
 // WorkerOption defines a function signature for configuring a Worker.
@@ -175,6 +201,11 @@ func (w *Worker) setupHandlers(mux *asynq.ServeMux) {
 
 // makeHandlerFunc creates a task handling function for the Asynq server, applying rate limiting and error handling.
 func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, task *asynq.Task) error {
+	finalHandler := handler.Process
+	for i := len(w.middlewares) - 1; i >= 0; i-- {
+		finalHandler = w.middlewares[i](finalHandler)
+	}
+
 	return func(ctx context.Context, task *asynq.Task) error {
 		if w.limiter != nil && !w.limiter.Allow() {
 			// Global rate limit exceeded
@@ -204,7 +235,7 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 		)
 
 		// Process the job with the reconstructed Job object
-		if err := handler.Handle(ctx, job); err != nil {
+		if err := finalHandler(ctx, job); err != nil {
 			w.errorHandler.HandleError(err, map[string]interface{}{"type": task.Type(), "job": job})
 			return err
 		}

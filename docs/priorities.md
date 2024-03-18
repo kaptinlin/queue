@@ -1,4 +1,4 @@
-# Queue Priority
+# Priority Queues
 
 In the realm of efficient background task processing, leveraging queue priorities is a crucial feature. It allows developers to ensure that critical tasks are attended to before those of lesser urgency. 
 

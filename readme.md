@@ -115,8 +115,9 @@ Learn more about the library's advanced features by exploring our documentation 
 - [Priority Queues](./docs/priorities.md)
 - [Rate Limiting](./docs/rate_limiting.md)
 - [Job Retention](./docs/retention.md)
-- [Retries](./docs/retries.md)
+- [Job Retries](./docs/retries.md)
 - [Timeouts and Deadlines](./docs/timeouts_deadline.md)
+- [Using Middleware](./docs/middleware.md)
 
 ## Contributing
 

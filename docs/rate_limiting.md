@@ -49,14 +49,10 @@ func ProcessEmailJob(ctx context.Context, job *queue.Job) error {
 // Create a limiter for this handler: 5 events per minute.
 limiter := rate.NewLimiter(rate.Every(1*time.Minute), 5)
 
+// Bind rate limiter to handler for optimal execution control.
 handler := queue.NewHandler("send_email", ProcessEmailJob, queue.WithRateLimiter(limiter))
-```
 
-### Registering and Processing Jobs with Rate Limits
-
-After configuring rate limits for handlers, register them with your worker to ensure tasks are processed according to the specified limits.
-
-```go
+// Register the handler with the worker.
 if err := worker.RegisterHandler(handler); err != nil {
     log.Fatalf("Failed to register handler: %v", err)
 }

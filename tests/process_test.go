@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/kaptinlin/queue"
 )
@@ -16,72 +15,60 @@ type TestJobPayload struct {
 	Message string `json:"message"`
 }
 
-// TestEnqueueAndProcessJobWithVerification tests the full lifecycle of a job and verifies the handler execution.
+// TestEnqueueAndProcessJobWithVerification tests the full lifecycle of a job, ensuring that the job handler executes.
 func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
-	// Assuming getRedisConfig() provides a valid *queue.RedisConfig.
 	redisConfig := getRedisConfig()
 
+	// Initialize the client to interact with the queue.
 	client, err := queue.NewClient(redisConfig)
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
 	defer client.Close()
 
-	// Create and enqueue a job.
+	// Define the job payload and enqueue a new job.
 	payload := TestJobPayload{Message: "Hello, Test Queue!"}
 	job := queue.NewJob(testJobType, payload)
 	if _, err = client.EnqueueJob(job); err != nil {
 		t.Fatalf("Failed to enqueue job: %v", err)
 	}
 
+	// Initialize the worker responsible for processing jobs.
 	worker, err := queue.NewWorker(redisConfig)
 	if err != nil {
 		t.Fatalf("Failed to create worker: %v", err)
 	}
 
-	// Shared state to verify handler execution.
-	var handlerExecuted bool
-	var handlerExecutionLock sync.Mutex
+	// Use a WaitGroup to wait for the handler execution.
+	var wg sync.WaitGroup
+	wg.Add(1) // Expecting one job to be processed
 
-	// Define the test job handler function with verification logic.
+	// Define and register the job handler.
 	testJobHandler := func(ctx context.Context, job *queue.Job) error {
+		defer wg.Done() // Signal that the job has been processed.
+
 		var payload TestJobPayload
 		if err := job.DecodePayload(&payload); err != nil {
 			return err
 		}
 
-		// Handler logic goes here. For demonstration, we're just logging.
+		// Logging for demonstration. Replace with actual job processing logic.
 		t.Logf("Processing job with message: %s\n", payload.Message)
-
-		// Mark the handler as executed.
-		handlerExecutionLock.Lock()
-		handlerExecuted = true
-		handlerExecutionLock.Unlock()
 
 		return nil
 	}
 
-	// Register the test job handler with the worker.
-	handler := queue.NewHandler(testJobType, testJobHandler)
-	if err = worker.RegisterHandler(handler); err != nil {
-		t.Fatalf("Failed to register handler: %v", err)
-	}
+	// Register the job type and its handler with the worker.
+	worker.Register(testJobType, testJobHandler)
 
-	// Start the worker in a goroutine.
+	// Start the worker in a separate goroutine to process jobs.
 	go func() {
 		if err := worker.Start(); err != nil {
 			t.Errorf("Worker failed to start: %v", err)
 		}
 	}()
-	defer worker.Stop()
+	defer worker.Stop() // Ensure the worker is stopped after the test.
 
-	// Wait a reasonable amount of time for the job to be processed.
-	time.Sleep(5 * time.Second) // Adjust this sleep time based on expected job processing time.
-
-	// Check if the handler was executed.
-	handlerExecutionLock.Lock()
-	if !handlerExecuted {
-		t.Errorf("Handler was not executed")
-	}
-	handlerExecutionLock.Unlock()
+	// Wait for the job handler to execute.
+	wg.Wait()
 }

@@ -1,77 +1,62 @@
-# Optimizing Task Retries
+# Optimizing Job Retries
 
-Effective task retry strategies are key to a resilient task processing system. Here's how to fine-tune retries for better fault tolerance and efficiency.
+Implementing strategic job retry mechanisms enhances the fault tolerance of your job processing system, ensuring efficiency even in the face of failures.
 
-## Setting Custom Retry Delays
+## Customizing Retry Delays
 
-Control how long the system waits before retrying a task with `RetryDelayFunc`, leveraging attempts to calculate delay. Use an exponential backoff for a balance between aggression and patience.
+Adopting an exponential backoff strategy for retry delays helps balance between immediate retries and waiting too long, effectively managing both transient and persistent failures.
 
-### Define the Delay Function
+### Exponential Backoff Strategy
 
 ```go
+import "math"
+
+// Exponential backoff increases delay between retries, optimizing for temporary outage recovery.
 func ExponentialBackoffDelay(attempts int, _ error) time.Duration {
-    return time.Duration(math.Pow(float64(attempts), 4)) * time.Second
+    return time.Duration(math.Pow(float64(attempts), 2)) * time.Second
 }
 ```
 
-This function exponentially increases the wait time between retries, essential for managing temporary failures effectively.
-
-### Configure the Handler
+### Applying to a Job Handler
 
 ```go
-handler := queue.NewHandler("email:send", HandleEmailSendJob, queue.WithRetryDelayFunc(ExponentialBackoffDelay))
+handler := queue.NewHandler(
+    "process_job",
+    ProcessJobHandler,
+    queue.WithRetryDelayFunc(ExponentialBackoffDelay), // Implement custom retry delay
+)
 ```
 
-Applying this strategy ensures escalating delays, providing ample time for issues to resolve before retrying.
+This setup applies escalating delay times for retries, efficiently spacing out retry attempts.
 
-## Handling Failures Gracefully
+## Distinguishing Failure Types
 
-Differentiate between temporary and permanent failures to optimize resource use and processing time.
+Identifying the nature of failures allows for more intelligent retry decisions, conserving resources and reducing unnecessary retries.
 
-### Temporary Failures
+### Handling Temporary Failures
 
-For issues expected to resolve without intervention, return `ErrTransientIssue` to retry without affecting the count.
+Temporary issues should trigger retries without impacting the retry count, aiding in self-recovery of transient problems.
 
 ```go
-func HandleEmailSendJob(ctx context.Context, job *queue.Job) error {
-    if temporaryIssueDetected() {
-        return queue.ErrTransientIssue // No penalty on retry count
+func ProcessJobHandler(ctx context.Context, job *queue.Job) error {
+    if temporaryIssue() {
+        return queue.ErrTransientIssue // Signals a retry without penalty
     }
-    log.Printf("Sending email to: %s", job.Payload["email"])
+    // Job processing logic
     return nil
 }
 ```
 
-### Permanent Failures
+### Addressing Permanent Failures
 
-When a retry won't change the outcome, halt further attempts with `NewSkipRetryError`.
+For errors unlikely to be resolved with retries, prevent further attempts to save resources.
 
 ```go
-func HandleEmailSendJob(ctx context.Context, job *queue.Job) error {
-    if irreversibleErrorDetected() {
-        return queue.NewSkipRetryError("No further retries")
+func ProcessJobHandler(ctx context.Context, job *queue.Job) error {
+    if irreversibleError() {
+        return queue.NewSkipRetryError("Unrecoverable error identified") // Cease retries
     }
-    log.Printf("Sending email to: %s", job.Payload["email"])
+    // Job processing logic
     return nil
 }
 ```
-
-### Integrating Into the Worker
-
-After setting up handlers, register them and start the worker for task processing.
-
-```go
-// Register handler with retry strategies
-if err := worker.RegisterHandler(handler); err != nil {
-    log.Fatalf("Handler registration failed: %v", err)
-}
-
-// Launch the worker
-if err := worker.Start(); err != nil {
-    log.Fatalf("Worker start failed: %v", err)
-}
-```
-
-## Summary
-
-Adopting these strategies enhances your system's ability to navigate failures smoothly, balancing between retry attempts and immediate resolution when necessary. By tailoring retry behaviors, your application can achieve higher resilience and operational efficiency.
