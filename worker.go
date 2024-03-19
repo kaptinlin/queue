@@ -35,14 +35,14 @@ type Worker struct {
 
 // WorkerErrorHandler defines an interface for handling errors that occur during job processing.
 type WorkerErrorHandler interface {
-	HandleError(err error, context map[string]interface{})
+	HandleError(err error, job *Job)
 }
 
 // DefaultWorkerErrorHandler is a default implementation of WorkerErrorHandler that logs errors.
 type DefaultWorkerErrorHandler struct{}
 
-func (h *DefaultWorkerErrorHandler) HandleError(err error, context map[string]interface{}) {
-	log.Printf("Error processing job: %v, context: %v\n", err, context)
+func (h *DefaultWorkerErrorHandler) HandleError(err error, job *Job) {
+	log.Printf("Error processing job: %v, job: %v\n", err, job)
 }
 
 // WorkerConfig holds configuration parameters for a worker, including concurrency, queue priorities, and error handling.
@@ -237,7 +237,7 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 
 		// Process the job with the reconstructed Job object
 		if err := finalHandler(ctx, job); err != nil {
-			w.errorHandler.HandleError(err, map[string]interface{}{"type": task.Type(), "job": job})
+			w.errorHandler.HandleError(err, job)
 			return err
 		}
 

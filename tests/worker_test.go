@@ -125,7 +125,7 @@ func NewCustomWorkerErrorHandler() *CustomWorkerErrorHandler {
 }
 
 // HandleError captures job processing errors.
-func (h *CustomWorkerErrorHandler) HandleError(err error, context map[string]interface{}) {
+func (h *CustomWorkerErrorHandler) HandleError(err error, job *queue.Job) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.errors = append(h.errors, err)

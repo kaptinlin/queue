@@ -118,6 +118,7 @@ Learn more about the library's advanced features by exploring our documentation 
 - [Job Retries](./docs/retries.md)
 - [Timeouts and Deadlines](./docs/timeouts_deadline.md)
 - [Using Middleware](./docs/middleware.md)
+- [Error Handling](./docs/error_handling.md)
 
 ## Contributing
 

@@ -56,12 +56,6 @@ func TestClient_WithClientRetention(t *testing.T) {
 		t.Fatalf("Failed to create client with retention: %v", err)
 	}
 	defer client.Close()
-
-	// Here, you'd enqueue a job and then assert that it has the expected retention period.
-	// This likely requires inspecting the job metadata in Redis directly to verify the retention is as expected.
-	// Note: This test is more challenging to implement without support from the library to inspect job metadata.
-	// You may need to use Redis commands directly to inspect the job's retention setting, which requires knowledge
-	// of how the library stores this data.
 }
 
 func TestClient_WithClientErrorHandler(t *testing.T) {
@@ -103,7 +97,7 @@ type CustomClientErrorHandler struct {
 }
 
 // HandleError captures enqueue errors.
-func (h *CustomClientErrorHandler) HandleError(err error, context map[string]interface{}) {
+func (h *CustomClientErrorHandler) HandleError(err error, job *queue.Job) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.errors = append(h.errors, err)

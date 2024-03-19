@@ -23,14 +23,14 @@ type ClientConfig struct {
 
 // ClientErrorHandler provides an interface for handling enqueue errors.
 type ClientErrorHandler interface {
-	HandleError(err error, context map[string]interface{})
+	HandleError(err error, job *Job)
 }
 
 // DefaultClientErrorHandler logs errors encountered during job enqueue operations.
 type DefaultClientErrorHandler struct{}
 
-func (h *DefaultClientErrorHandler) HandleError(err error, context map[string]interface{}) {
-	log.Printf("Error enqueuing job: %v, context: %v\n", err, context)
+func (h *DefaultClientErrorHandler) HandleError(err error, job *Job) {
+	log.Printf("Error enqueuing job: %v, job: %v\n", err, job)
 }
 
 // NewClient initializes a new Client with specified Redis configuration and client options.
@@ -99,7 +99,7 @@ func (c *Client) Enqueue(jobType string, payload interface{}, opts ...JobOption)
 func (c *Client) EnqueueJob(job *Job) (string, error) {
 	task, err := job.ConvertToAsynqTask()
 	if err != nil {
-		c.errorHandler.HandleError(err, map[string]interface{}{"job": job})
+		c.errorHandler.HandleError(err, job)
 		return "", err
 	}
 
@@ -119,7 +119,7 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 	// Enqueue the task with the prepared options
 	result, err := c.asynqClient.Enqueue(task, taskOpts...)
 	if err != nil {
-		c.errorHandler.HandleError(err, map[string]interface{}{"job": job})
+		c.errorHandler.HandleError(err, job)
 		return "", fmt.Errorf("%w: %v", ErrEnqueueJob, err)
 	}
 
