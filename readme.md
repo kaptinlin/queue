@@ -119,6 +119,7 @@ Learn more about the library's advanced features by exploring our documentation 
 - [Timeouts and Deadlines](./docs/timeouts_deadline.md)
 - [Using Middleware](./docs/middleware.md)
 - [Error Handling](./docs/error_handling.md)
+- [Manager for Web UI Development](./docs/manager.md)
 
 ## Contributing
 

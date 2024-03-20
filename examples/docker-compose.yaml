@@ -9,5 +9,15 @@ services:
     ports:
       - "6379:6379"
     restart: unless-stopped
+  asynqmon:
+    image: hibiken/asynqmon
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: 8080
+      REDIS_ADDR: "redis:6379"
+      REDIS_DB: 0
+      REDIS_PASSWORD: ""
+    restart: unless-stopped
 volumes:
   redis_data:

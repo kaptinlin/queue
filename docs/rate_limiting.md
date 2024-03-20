@@ -17,7 +17,7 @@ import (
 )
 
 // Define a global rate limiter: 10 tasks per second, with bursts of up to 5 tasks.
-limiter := rate.NewLimiter(10, 5)
+limiter := rate.NewLimiter(rate.Limit(10), 5)
 
 // Apply the global rate limiter to the worker.
 worker, err := queue.NewWorker(redisConfig, queue.WithWorkerRateLimiter(limiter))

@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/kaptinlin/queue"
 	"github.com/kaptinlin/queue/examples/struct/jobs"
@@ -10,7 +11,7 @@ import (
 func main() {
 	// Set up Redis configuration and client.
 	redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
-	client, err := queue.NewClient(redisConfig)
+	client, err := queue.NewClient(redisConfig, queue.WithClientRetention(24*time.Hour))
 	if err != nil {
 		log.Fatalf("Failed to create client: %v", err)
 	}
