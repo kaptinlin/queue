@@ -1,6 +1,6 @@
 # Golang Queue Processing Library
 
-This library offers a robust and flexible solution for managing and processing queued jobs in Go applications. Built on top of the [Asynq](https://github.com/hibiken/asynq) framework and using Redis for storage, it provides advanced features like custom error handling, retries, priority queues, rate limiting, and job retention. Whether you're building a simple task runner or a complex distributed system, this library is designed to meet your needs with efficiency and ease.
+This library offers a robust and flexible solution for managing and processing queued jobs in Go applications. Built on top of the [Asynq](https://github.com/hibiken/asynq) task processing library, which uses Redis for storage, it provides advanced features like custom error handling, retries, priority queues, rate limiting, and job retention. Whether you're building a simple task runner or a complex distributed system, this library is designed to meet your needs with efficiency and ease. It also supports the setup of multiple workers across different machines, allowing for scalable and distributed job processing.
 
 ## Getting Started
 
@@ -71,7 +71,7 @@ func handleEmailSendJob(ctx context.Context, job *queue.Job) error {
 }
 ```
 
-Register your function for job types you intend to process:
+To achieve scalable and distributed job processing, you can register your function and start workers on different machines. Each worker independently processes jobs enqueued by the client:
 
 ```go
 worker, err := queue.NewWorker(redisConfig, queue.WithWorkerQueue("default", 1))
