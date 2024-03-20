@@ -11,11 +11,12 @@ import (
 
 // Job represents a task that will be executed by a worker.
 type Job struct {
-	ID          string      `json:"id"`          // Unique identifier for the job.
-	Fingerprint string      `json:"fingerprint"` // Unique hash for the job based on its type and payload.
-	Type        string      `json:"type"`        // Type of job, used for handler mapping.
-	Payload     interface{} `json:"payload"`     // Job data.
-	Options     JobOptions  `json:"options"`     // Execution options for the job.
+	ID           string              `json:"id"`          // Unique identifier for the job.
+	Fingerprint  string              `json:"fingerprint"` // Unique hash for the job based on its type and payload.
+	Type         string              `json:"type"`        // Type of job, used for handler mapping.
+	Payload      interface{}         `json:"payload"`     // Job data.
+	resultWriter *asynq.ResultWriter `json:"-"`           // Result writer for the job.
+	Options      JobOptions          `json:"options"`     // Execution options for the job.
 }
 
 // JobOptions encapsulates settings that control job execution.
@@ -143,6 +144,32 @@ func (j *Job) DecodePayload(v interface{}) error {
 }
 
 // SetID sets the job's unique identifier.
-func (j *Job) SetID(id string) {
+func (j *Job) SetID(id string) *Job {
 	j.ID = id
+	return j
+}
+
+// SetResultWriter sets the result writer for the job.
+func (j *Job) SetResultWriter(rw *asynq.ResultWriter) *Job {
+	j.resultWriter = rw
+	return j
+}
+
+// WriteResult writes the result of the job to the result writer.
+func (j *Job) WriteResult(result interface{}) error {
+	if j.resultWriter == nil {
+		return fmt.Errorf("%w", ErrResultWriterNotSet)
+	}
+
+	resultBytes, err := json.Marshal(result)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrSerializationFailure, err)
+	}
+
+	_, err = j.resultWriter.Write(resultBytes)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrFailedToWriteResult, err)
+	}
+
+	return nil
 }

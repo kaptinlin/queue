@@ -1,8 +1,10 @@
 package tests
 
 import (
+	"context"
 	"encoding/json"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -173,5 +175,93 @@ func TestJobPayloadNestedStruct(t *testing.T) {
 
 	if !reflect.DeepEqual(decodedPayload, payload) {
 		t.Errorf("Expected payload to be %+v, got %+v", payload, decodedPayload)
+	}
+}
+func TestWriteResultAndRetrieve(t *testing.T) {
+	redisConfig := getRedisConfig()
+
+	// Initialize the queue client
+	client, err := queue.NewClient(redisConfig)
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+	defer client.Close()
+
+	// Initialize the worker to process jobs
+	worker, err := queue.NewWorker(redisConfig)
+	if err != nil {
+		t.Fatalf("Failed to create worker: %v", err)
+	}
+
+	// Prepare a WaitGroup for job completion synchronization
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	// Define expected result
+	expectedResult := map[string]interface{}{
+		"status": "completed",
+		"detail": "Job processed successfully",
+	}
+
+	// Define the job handler
+	testJobHandler := func(ctx context.Context, job *queue.Job) error {
+		defer wg.Done() // Signal job processing completion
+
+		// Simulate job processing...
+
+		// Write result to job
+		if err := job.WriteResult(expectedResult); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
+	// Register the job type and handler with the worker
+	if err := worker.Register(testJobType, testJobHandler); err != nil {
+		t.Fatalf("Failed to register job handler: %v", err)
+	}
+
+	// Start the worker in a separate goroutine
+	go func() {
+		if err := worker.Start(); err != nil {
+			t.Errorf("Worker failed to start: %v", err)
+		}
+	}()
+	defer worker.Stop()
+
+	// Enqueue the job
+	payload := TestJobPayload{Message: "Test WriteResult"}
+	job := queue.NewJob(testJobType, payload, queue.WithRetention(24*time.Hour))
+	jobID, err := client.EnqueueJob(job)
+	if err != nil {
+		t.Fatalf("Failed to enqueue job: %v", err)
+	}
+
+	// Wait for job processing to complete
+	wg.Wait()
+
+	// Allow some time for job result to be processed and stored
+	time.Sleep(5 * time.Second)
+
+	// Initialize manager to retrieve job information
+	manager, err := setupTestManager()
+	if err != nil {
+		t.Fatalf("Failed to setup manager: %v", err)
+	}
+	jobInfo, err := manager.GetJobInfo(queue.DefaultQueue, jobID)
+	if err != nil {
+		t.Fatalf("Failed to get job info: %v", err)
+	}
+
+	// Deserialize the job result to verify it
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(*jobInfo.Result), &result); err != nil {
+		t.Fatalf("Failed to unmarshal job result: %v", err)
+	}
+
+	// Assert that the result matches the expected result
+	if result["status"] != expectedResult["status"] || result["detail"] != expectedResult["detail"] {
+		t.Errorf("Job result did not match expected result. Got %v, want %v", result, expectedResult)
 	}
 }

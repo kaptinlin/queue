@@ -233,7 +233,7 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 			WithDeadline(&taskInfo.Deadline),
 			WithScheduleAt(&taskInfo.NextProcessAt),
 		)
-		job.SetID(taskID)
+		job.SetID(taskID).SetResultWriter(task.ResultWriter())
 
 		// Process the job with the reconstructed Job object
 		if err := finalHandler(ctx, job); err != nil {

@@ -19,10 +19,12 @@ var (
 	ErrSerializationFailure  = errors.New("failure in serialization process")
 	ErrEnqueueJob            = errors.New("unable to enqueue job")
 	ErrJobProcessingTimeout  = errors.New("job processing exceeded timeout")
-	ErrTransientIssue        = errors.New("temporary issue detected, task will retry without affecting retry count")
+	ErrTransientIssue        = errors.New("temporary issue detected, job will retry without affecting retry count")
+	ErrResultWriterNotSet    = errors.New("result writer is not set for the job")
+	ErrFailedToWriteResult   = errors.New("failed to write job result")
 )
 
-// ErrSkipRetry indicates a specific Asynq framework condition to skip retries and move the task to the archive.
+// ErrSkipRetry indicates a specific Asynq framework condition to skip retries and move the job to the archive.
 var ErrSkipRetry = asynq.SkipRetry
 
 // NewSkipRetryError creates and wraps a SkipRetry error with a custom message.
