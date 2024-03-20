@@ -170,9 +170,11 @@ func (w *Worker) Start() error {
 }
 
 // Stop gracefully shuts down the worker server, ensuring atomic update of the started status.
-func (w *Worker) Stop() {
+func (w *Worker) Stop() error {
 	w.asynqServer.Shutdown()
 	w.started.Store(false)
+
+	return nil
 }
 
 // setupAsynqServer initializes the Asynq server and inspector based on the provided Redis configuration and worker configuration.

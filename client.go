@@ -126,7 +126,7 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 	return result.ID, nil
 }
 
-// Close terminates the Asynq client connection, releasing resources.
-func (c *Client) Close() error {
+// Stop terminates the Asynq client connection, releasing resources.
+func (c *Client) Stop() error {
 	return c.asynqClient.Close()
 }

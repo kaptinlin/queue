@@ -12,7 +12,7 @@ import (
 
 // TestGlobalMiddleware ensures global middleware is applied to all jobs processed by the worker.
 func TestGlobalMiddleware(t *testing.T) {
-	redisConfig := getRedisConfig() // Ensure this returns a valid configuration
+	redisConfig := getRedisConfig()
 
 	// Define a simple global middleware to count jobs
 	var (
@@ -78,7 +78,7 @@ func TestGlobalMiddleware(t *testing.T) {
 
 // TestScopedMiddleware ensures that scoped middleware is correctly applied to specific job handlers.
 func TestScopedMiddleware(t *testing.T) {
-	redisConfig := getRedisConfig() // Assumes this function returns a valid Redis configuration.
+	redisConfig := getRedisConfig()
 
 	// Define a simple scoped middleware to count processed jobs.
 	var (

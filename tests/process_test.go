@@ -24,7 +24,7 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
-	defer client.Close()
+	defer client.Stop()
 
 	// Define the job payload and enqueue a new job.
 	payload := TestJobPayload{Message: "Hello, Test Queue!"}

@@ -185,7 +185,7 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
-	defer client.Close()
+	defer client.Stop()
 
 	// Initialize the worker to process jobs
 	worker, err := queue.NewWorker(redisConfig)

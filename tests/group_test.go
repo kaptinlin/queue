@@ -12,7 +12,7 @@ import (
 
 // TestGroupMiddleware ensures that group-specific middleware is correctly applied to jobs processed by handlers within the group.
 func TestGroupMiddleware(t *testing.T) {
-	redisConfig := getRedisConfig() // Assumes this function returns a valid Redis configuration.
+	redisConfig := getRedisConfig()
 
 	// Define group-specific middleware to count processed jobs within the group.
 	var (

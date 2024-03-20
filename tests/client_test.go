@@ -15,7 +15,7 @@ func TestClient_Enqueue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
-	defer client.Close()
+	defer client.Stop()
 
 	jobType := "testEnqueueJob"
 	payload := map[string]interface{}{"key": "value"}
@@ -33,7 +33,7 @@ func TestClient_EnqueueJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
-	defer client.Close()
+	defer client.Stop()
 
 	jobType := "testEnqueueJobJob"
 	payload := map[string]interface{}{"key": "value"}
@@ -55,11 +55,11 @@ func TestClient_WithClientRetention(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client with retention: %v", err)
 	}
-	defer client.Close()
+	defer client.Stop()
 }
 
 func TestClient_WithClientErrorHandler(t *testing.T) {
-	redisConfig := getRedisConfig() // Ensure this returns a valid Redis configuration
+	redisConfig := getRedisConfig()
 
 	handler := &CustomClientErrorHandler{}
 
@@ -85,8 +85,8 @@ func TestClient_WithClientErrorHandler(t *testing.T) {
 	}
 
 	// Clean up resources
-	if err := client.Close(); err != nil {
-		t.Errorf("Failed to close client: %v", err)
+	if err := client.Stop(); err != nil {
+		t.Errorf("Failed to stop client: %v", err)
 	}
 }
 

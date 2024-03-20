@@ -50,9 +50,8 @@ if err != nil {
 }
 
 // Create a high-priority email notification job
-options := queue.JobOptions{Queue: "critical"}
 jobPayload := map[string]interface{}{"to": "user@example.com"}
-job := queue.NewJob("email_notification", jobPayload, options)
+job := queue.NewJob("email_notification", jobPayload, queue.WithQueue("critical"))
 
 // Enqueue the job
 _, err = client.EnqueueJob(job)

@@ -1,14 +1,14 @@
-# Using middleware
+# Middleware in `queue` Library
 
-Middleware provides a powerful mechanism to enhance and customize the behavior of task processing within the `queue` library. This functionality allows for executing code before and after your task handlers, enabling common features like logging, tracing, metrics collection, and more, without cluttering your business logic.
+Middleware in the `queue` library enables pre and post-processing around your job handlers, facilitating functionalities like logging, tracing, and metrics collection without cluttering your core logic.
 
-## How Middleware Works
+## How It Works
 
-Middleware in the `queue` library is functions that wrap around your task processing logic. When a task is executed, the middleware functions are called in the order they were added, allowing each middleware to perform operations both before and after the task handler.
+Middleware functions encapsulate your job processing logic. They're executed in sequence, allowing for operations to be inserted before and after the main job handler executes.
 
 ## Implementing Middleware
 
-A middleware is implemented as a function that takes a `HandlerFunc` (the original task processing function) and returns a new `HandlerFunc` that includes the middleware's logic.
+Middleware is crafted as a function that accepts a `HandlerFunc` and returns a modified `HandlerFunc` incorporating the middleware's operations.
 
 ### Middleware Signature
 
@@ -16,9 +16,9 @@ A middleware is implemented as a function that takes a `HandlerFunc` (the origin
 type MiddlewareFunc func(HandlerFunc) HandlerFunc
 ```
 
-### Example: A Simple Logging Middleware
+### Example: Logging Middleware
 
-Below is an example of a middleware function that logs the start and completion of tasks.
+Below is an example of logging middleware:
 
 ```go
 func LoggingMiddleware(logger *log.Logger) MiddlewareFunc {
@@ -39,11 +39,11 @@ func LoggingMiddleware(logger *log.Logger) MiddlewareFunc {
 
 ## Applying Middleware
 
-Middleware can be applied at three different levels within the `queue` system: globally across all workers, to specific groups of tasks, or directly to individual task handlers.
+Middleware can be applied at various levels for different scopes of control: globally, to job groups, or to individual job handlers.
 
 ### Global Middleware
 
-Global middleware affects all tasks processed by a worker.
+Impacts all jobs processed by a worker.
 
 ```go
 worker.Use(LoggingMiddleware(log.New(os.Stdout, "", log.LstdFlags)))
@@ -51,16 +51,16 @@ worker.Use(LoggingMiddleware(log.New(os.Stdout, "", log.LstdFlags)))
 
 ### Group Middleware
 
-Group middleware is applied to all tasks within a defined group, allowing for specialized processing logic based on task categorization.
+Targets all jobs within a specified group.
 
 ```go
-emailTasks := worker.Group("email")
-emailTasks.Use(TracingMiddleware(tracer))
+emailJobs := worker.Group("email")
+emailJobs.Use(TracingMiddleware(tracer))
 ```
 
 ### Handler Middleware
 
-Handler middleware is applied directly to a specific task handler, providing the most granular level of control.
+Applies directly to a specified job handler.
 
 ```go
 worker.Register("send_email", SendEmailHandler, WithMiddleware(LoggingMiddleware(log.New(os.Stdout, "", log.LstdFlags))))
@@ -68,8 +68,8 @@ worker.Register("send_email", SendEmailHandler, WithMiddleware(LoggingMiddleware
 
 ## Best Practices
 
-- **Keep It Simple:** Middleware should be kept simple and focused on a single responsibility to ensure maintainability and readability.
-- **Error Handling:** Consider how your middleware will handle and propagate errors. Middleware is an excellent place to implement consistent error logging and handling strategies.
-- **Performance Considerations:** Be mindful of the performance impact of your middleware, especially if it involves IO operations such as logging to a file or sending telemetry data over the network.
+- **Simplicity:** Middleware should focus on a single responsibility for clarity and maintainability.
+- **Error Handling:** Middleware offers a strategic point for consistent error management.
+- **Performance:** Consider the impact on performance, especially for operations involving I/O.
 
-By judiciously using middleware, you can significantly enhance the functionality and maintainability of your background task processing logic within the `queue` library.
+Thoughtful middleware use can significantly streamline and enhance the handling of background jobs within the `queue` library.

@@ -101,8 +101,8 @@ func main() {
     signal.Notify(c, os.Interrupt)
     <-c
 
-    if err := client.Close(); err != nil {
-        log.Fatalf("Failed to close client: %v", err)
+    if err := client.Stop(); err != nil {
+        log.Fatalf("Failed to stop client: %v", err)
     }
     worker.Stop()
 }
@@ -117,6 +117,7 @@ Learn more about the library's advanced features by exploring our documentation 
 - [Job Retention and Results](./docs/retention_results.md)
 - [Job Retries](./docs/retries.md)
 - [Timeouts and Deadlines](./docs/timeouts_deadline.md)
+- [Scheduler](./docs/scheduler.md)
 - [Using Middleware](./docs/middleware.md)
 - [Error Handling](./docs/error_handling.md)
 - [Manager for Web UI Development](./docs/manager.md)

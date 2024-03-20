@@ -173,3 +173,12 @@ func (j *Job) WriteResult(result interface{}) error {
 
 	return nil
 }
+
+func NewJobFromAsynqTask(task *asynq.Task) (*Job, error) {
+	job := &Job{
+		Type:    task.Type(),
+		Payload: task.Payload(),
+	}
+
+	return job, nil
+}
