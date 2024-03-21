@@ -84,20 +84,27 @@ func WithDeadline(deadline *time.Time) JobOption {
 }
 
 // ConvertToAsynqTask converts the Job into an Asynq task, ready for enqueueing.
-func (j *Job) ConvertToAsynqTask() (*asynq.Task, error) {
+func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 	if j.Type == "" {
-		return nil, ErrNoJobTypeSpecified
+		return nil, nil, ErrNoJobTypeSpecified
 	}
 
 	if j.Options.Queue == "" {
-		return nil, ErrNoJobQueueSpecified
+		return nil, nil, ErrNoJobQueueSpecified
 	}
 
 	payloadBytes, err := json.Marshal(j.Payload)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrSerializationFailure, err)
+		return nil, nil, fmt.Errorf("%w: %v", ErrSerializationFailure, err)
 	}
 
+	opts := j.ConvertToAsynqOptions()
+
+	return asynq.NewTask(j.Type, payloadBytes, opts...), opts, nil
+}
+
+// ConvertToAsynqOptions converts the Job's options into Asynq options.
+func (j *Job) ConvertToAsynqOptions() []asynq.Option {
 	opts := make([]asynq.Option, 0)
 
 	// Apply job options to the Asynq task.
@@ -117,7 +124,7 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, error) {
 		opts = append(opts, asynq.Retention(j.Options.Retention))
 	}
 
-	return asynq.NewTask(j.Type, payloadBytes, opts...), nil
+	return opts
 }
 
 // fingerprint generates a unique hash for the job based on its type and payload.
@@ -130,6 +137,8 @@ func (j *Job) fingerprint() {
 	hash.Write([]byte(j.Type))
 	payloadBytes, _ := json.Marshal(j.Payload)
 	hash.Write(payloadBytes)
+	optionsBytes, _ := json.Marshal(j.Options)
+	hash.Write(optionsBytes)
 
 	j.Fingerprint = fmt.Sprintf("%x", hash.Sum(nil))
 }

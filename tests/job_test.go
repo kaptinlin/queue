@@ -30,7 +30,7 @@ func TestJob_ConvertToAsynqTask(t *testing.T) {
 	payload := map[string]interface{}{"key": "value"}
 	job := queue.NewJob(jobType, payload)
 
-	task, err := job.ConvertToAsynqTask()
+	task, _, err := job.ConvertToAsynqTask()
 	if err != nil {
 		t.Fatalf("ConvertToAsynqTask failed: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestJobPayloadBasicType(t *testing.T) {
 	payload := "This is a test string."
 
 	job := queue.NewJob(jobType, payload)
-	_, err := job.ConvertToAsynqTask()
+	_, _, err := job.ConvertToAsynqTask()
 	if err != nil {
 		t.Fatalf("Failed to convert job to task: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestJobPayloadStruct(t *testing.T) {
 	payload := TestPayload{Name: "John Doe", Age: 30, Hobbies: []string{"Reading", "Cycling"}}
 
 	job := queue.NewJob(jobType, payload)
-	task, err := job.ConvertToAsynqTask()
+	task, _, err := job.ConvertToAsynqTask()
 	if err != nil {
 		t.Fatalf("Failed to convert job to task: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestJobPayloadNestedStruct(t *testing.T) {
 	payload := NestedPayload{Data: TestPayload{Name: "Jane Doe", Age: 28, Hobbies: []string{"Skiing", "Photography"}}}
 
 	job := queue.NewJob(jobType, payload)
-	task, err := job.ConvertToAsynqTask()
+	task, _, err := job.ConvertToAsynqTask()
 	if err != nil {
 		t.Fatalf("Failed to convert job to task: %v", err)
 	}

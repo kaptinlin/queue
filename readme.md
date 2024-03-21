@@ -118,6 +118,7 @@ Learn more about the library's advanced features by exploring our documentation 
 - [Job Retries](./docs/retries.md)
 - [Timeouts and Deadlines](./docs/timeouts_deadline.md)
 - [Scheduler](./docs/scheduler.md)
+- [Config Provider for Scheduler](./docs/config_provider.md)
 - [Using Middleware](./docs/middleware.md)
 - [Error Handling](./docs/error_handling.md)
 - [Manager for Web UI Development](./docs/manager.md)

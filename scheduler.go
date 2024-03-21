@@ -1,25 +1,41 @@
 package queue
 
 import (
+	"errors"
+	"log"
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/robfig/cron/v3"
 )
+
+var ErrInvalidCronSpec = errors.New("invalid cron spec")
 
 // Scheduler manages job scheduling with Asynq.
 type Scheduler struct {
-	scheduler *asynq.Scheduler
-	options   SchedulerOptions
+	taskManager    *asynq.PeriodicTaskManager
+	configProvider ConfigProvider
+	options        SchedulerOptions
 }
 
 // SchedulerOptions contains options for the Scheduler.
 type SchedulerOptions struct {
-	Location            *time.Location
-	EnqueueErrorHandler func(*Job, error)
+	SyncInterval    time.Duration
+	Location        *time.Location
+	ConfigProvider  ConfigProvider
+	PreEnqueueFunc  func(job *Job)                // Pre-enqueue hook
+	PostEnqueueFunc func(job *JobInfo, err error) // Post-enqueue hook
 }
 
 // SchedulerOption defines a function signature for configuring the Scheduler.
 type SchedulerOption func(*SchedulerOptions)
+
+// WithSyncInterval sets the sync interval for the Scheduler's task manager.
+func WithSyncInterval(interval time.Duration) SchedulerOption {
+	return func(opts *SchedulerOptions) {
+		opts.SyncInterval = interval
+	}
+}
 
 // WithSchedulerLocation sets the time location for the Scheduler.
 func WithSchedulerLocation(loc *time.Location) SchedulerOption {
@@ -28,10 +44,24 @@ func WithSchedulerLocation(loc *time.Location) SchedulerOption {
 	}
 }
 
-// WithSchedulerEnqueueErrorHandler sets the enqueue error handler for the Scheduler.
-func WithSchedulerEnqueueErrorHandler(handler func(*Job, error)) SchedulerOption {
+// WithConfigProvider sets a custom config provider for the Scheduler.
+func WithConfigProvider(provider *MemoryConfigProvider) SchedulerOption {
 	return func(opts *SchedulerOptions) {
-		opts.EnqueueErrorHandler = handler
+		opts.ConfigProvider = provider
+	}
+}
+
+// WithPreEnqueueFunc sets a function to be called before enqueuing a job.
+func WithPreEnqueueFunc(fn func(job *Job)) SchedulerOption {
+	return func(opts *SchedulerOptions) {
+		opts.PreEnqueueFunc = fn
+	}
+}
+
+// WithPostEnqueueFunc sets a function to be called after enqueuing a job.
+func WithPostEnqueueFunc(fn func(job *JobInfo, err error)) SchedulerOption {
+	return func(opts *SchedulerOptions) {
+		opts.PostEnqueueFunc = fn
 	}
 }
 
@@ -44,25 +74,49 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 	asynqClientOpt := redisConfig.ToAsynqRedisOpt()
 
 	options := SchedulerOptions{
-		Location: time.UTC, // Default to UTC
+		Location:     time.UTC, // Default to UTC
+		SyncInterval: 60 * time.Second,
 	}
 	for _, opt := range opts {
 		opt(&options)
 	}
 
-	scheduler := asynq.NewScheduler(asynqClientOpt, &asynq.SchedulerOpts{
-		Location: options.Location,
-		EnqueueErrorHandler: func(task *asynq.Task, opts []asynq.Option, err error) {
-			if options.EnqueueErrorHandler != nil {
-				job, _ := NewJobFromAsynqTask(task)
-				options.EnqueueErrorHandler(job, err)
-			}
-		},
-	})
+	configProvider := options.ConfigProvider
+	if configProvider == nil {
+		configProvider = NewMemoryConfigProvider()
+	}
+
+	taskManager, err := asynq.NewPeriodicTaskManager(
+		asynq.PeriodicTaskManagerOpts{
+			RedisConnOpt:               asynqClientOpt,
+			PeriodicTaskConfigProvider: configProvider,
+			SyncInterval:               options.SyncInterval,
+			SchedulerOpts: &asynq.SchedulerOpts{
+				Location: options.Location,
+				PreEnqueueFunc: func(task *asynq.Task, opts []asynq.Option) {
+					if options.PreEnqueueFunc != nil {
+						job, _ := NewJobFromAsynqTask(task)
+						options.PreEnqueueFunc(job)
+					}
+				},
+				PostEnqueueFunc: func(taskInfo *asynq.TaskInfo, err error) {
+					log.Printf("Enqueued task: %v, err: %v", taskInfo, err)
+					if options.PostEnqueueFunc != nil {
+						jobInfo := toJobInfo(taskInfo, nil)
+						options.PostEnqueueFunc(jobInfo, err)
+					}
+				},
+			},
+		})
+
+	if err != nil {
+		return nil, err
+	}
 
 	return &Scheduler{
-		scheduler: scheduler,
-		options:   options,
+		taskManager:    taskManager,
+		configProvider: configProvider,
+		options:        options,
 	}, nil
 }
 
@@ -74,20 +128,13 @@ func (s *Scheduler) RegisterCron(spec string, jobType string, payload interface{
 
 // RegisterCronJob schedules a new cron job using the job details.
 func (s *Scheduler) RegisterCronJob(spec string, job *Job) (string, error) {
-	task, err := job.ConvertToAsynqTask()
+	// Use cron/v3 to parse the spec and check if it's a valid cron expression.
+	_, err := cron.ParseStandard(spec)
 	if err != nil {
-		return "", err
+		return "", ErrInvalidCronSpec
 	}
 
-	entryID, err := s.scheduler.Register(spec, task)
-	if err != nil {
-		if s.options.EnqueueErrorHandler != nil {
-			s.options.EnqueueErrorHandler(job, err)
-		}
-		return "", err
-	}
-
-	return entryID, nil
+	return s.configProvider.RegisterCronJob(spec, job)
 }
 
 // RegisterPeriodic schedules a new periodic job using the job type, payload, and options.
@@ -99,16 +146,16 @@ func (s *Scheduler) RegisterPeriodic(interval time.Duration, jobType string, pay
 // RegisterPeriodicJob schedules a new periodic job using the job details and an interval.
 func (s *Scheduler) RegisterPeriodicJob(interval time.Duration, job *Job) (string, error) {
 	spec := "@every " + interval.String()
-	return s.RegisterCronJob(spec, job)
+	return s.configProvider.RegisterCronJob(spec, job)
 }
 
 // Start begins the scheduler to enqueue tasks as per the schedule.
 func (s *Scheduler) Start() error {
-	return s.scheduler.Run()
+	return s.taskManager.Run()
 }
 
 // Stop gracefully shuts down the scheduler.
 func (s *Scheduler) Stop() error {
-	s.scheduler.Shutdown()
+	s.taskManager.Shutdown()
 	return nil
 }

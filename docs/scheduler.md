@@ -1,74 +1,98 @@
-# Scheduler
+# Scheduler Documentation
 
-The `Scheduler` component allows for periodic task scheduling, enabling tasks to be enqueued at regular intervals or based on cron expressions. This is useful for recurring tasks like nightly data backups, weekly reports, or regular data synchronization.
+The `Scheduler` enables scheduled job execution at specified intervals or according to cron expressions, facilitating routine operations such as nightly backups, weekly report generation, or periodic data synchronization tasks.
 
-### Scheduler Setup
+## Setup
 
-First, ensure a valid Redis configuration. Initialize the Scheduler with options like time zone and error handling as needed:
+Start with a valid Redis configuration. Initialize the Scheduler with necessary options like the time zone:
 
 ```go
 redisConfig := queue.NewRedisConfig(
-    queue.WithRedisAddress("localhost:6379"),
-    // Additional options...
+    queue.WithRedisAddress("localhost:6379"), // Specify your Redis server address
+    // Additional configuration options as needed...
 )
 
 scheduler, err := queue.NewScheduler(redisConfig,
-    queue.WithSchedulerLocation(time.UTC), // Or your desired time zone
-    queue.WithSchedulerEnqueueErrorHandler(func(job *queue.Job, err error) {
-        log.Println("Failed to enqueue job:", err)
-    }),
+    queue.WithSchedulerLocation(time.UTC), // Adjust the time zone as needed
 )
 if err != nil {
-    log.Fatal("Failed to create scheduler:", err)
+    log.Fatal("Scheduler creation failed:", err)
 }
 ```
 
-### Scheduling Tasks
+## Configuring Hooks for Job Lifecycle Management
 
-#### Cron Jobs
+### Pre-Enqueue Hook
 
-Schedule tasks with cron expressions:
+Incorporate custom logic prior to job enqueuing:
+
+```go
+scheduler.WithPreEnqueueFunc(func(job *queue.Job) {
+    // Insert pre-enqueue operations here
+    log.Printf("Job preparation: %s\n", job.Type)
+})
+```
+
+### Post-Enqueue Hook
+
+Execute follow-up actions after job enqueuing, especially for error handling:
+
+```go
+scheduler.WithPostEnqueueFunc(func(job *queue.JobInfo, err error) {
+    if err != nil {
+        log.Printf("Enqueue failed for job: %s, error: %v\n", job.Type, err)
+    } else {
+        log.Printf("Job enqueued successfully: %s\n", job.Type)
+    }
+})
+```
+
+## Job Scheduling
+
+### Cron Jobs
+
+For scheduling jobs based on cron expressions:
 
 ```go
 jobType := "report:generate"
-payload := map[string]interface{}{"type": "weekly"}
-cronExpression := "0 9 * * 1" // Every Monday at 9:00 AM
+payload := map[string]interface{}{"reportType": "weekly"}
+cronExpression := "0 9 * * 1" // Example: Every Monday at 9:00 AM
 
 _, err = scheduler.RegisterCron(cronExpression, jobType, payload)
 if err != nil {
-    log.Fatalf("Failed to schedule cron job: %v", err)
+    log.Fatalf("Cron job scheduling failed: %v", err)
 }
 ```
 
-#### Periodic Jobs
+### Periodic Jobs
 
-Schedule tasks at fixed intervals:
+For interval-based job scheduling:
 
 ```go
 jobType := "status:check"
-payload := map[string]interface{}{"service": "database"}
-interval := 15 * time.Minute // Every 15 minutes
+payload := map[string]interface{}{"target": "database"}
+interval := 15 * time.Minute // Example: Every 15 minutes
 
 _, err = scheduler.RegisterPeriodic(interval, jobType, payload)
 if err != nil {
-    log.Fatalf("Failed to schedule periodic job: %v", err)
+    log.Fatalf("Periodic job scheduling failed: %v", err)
 }
 ```
 
-### Starting and Stopping the Scheduler
+## Scheduler Operations
 
-**Start the Scheduler:**
+**Starting the Scheduler:**
 
 ```go
 if err := scheduler.Start(); err != nil {
-    log.Fatal("Failed to start scheduler:", err)
+    log.Fatal("Starting scheduler failed:", err)
 }
 ```
 
-**Stop the Scheduler:**
+**Stopping the Scheduler:**
 
 ```go
 if err := scheduler.Stop(); err != nil {
-    log.Println("Error shutting down scheduler:", err)
+    log.Println("Scheduler shutdown error:", err)
 }
 ```

@@ -1,7 +1,6 @@
 package tests
 
 import (
-	"log"
 	"testing"
 	"time"
 
@@ -11,78 +10,108 @@ import (
 func TestSchedulerInitialization(t *testing.T) {
 	redisConfig := getRedisConfig()
 
-	// Attempt to create a Scheduler instance
+	// Initialize a Scheduler instance with default settings.
 	scheduler, err := queue.NewScheduler(redisConfig)
 	if err != nil {
 		t.Fatalf("Failed to create scheduler: %v", err)
 	}
 
 	if scheduler == nil {
-		t.Fatal("Scheduler instance is nil, expected a valid instance")
+		t.Fatal("Expected a valid Scheduler instance, got nil")
 	}
 }
 
-func TestSchedulerRegisterAndStart(t *testing.T) {
+func TestSchedulerStartAndStop(t *testing.T) {
 	redisConfig := getRedisConfig()
-
-	scheduler, _ := queue.NewScheduler(redisConfig)
-
-	// Define a dummy job
-	jobType := "dummy_job"
-	payload := map[string]interface{}{"data": "test"}
-
-	// Register a cron job
-	_, err := scheduler.RegisterCron("0 */1 * * *", jobType, payload) // Every hour
+	scheduler, err := queue.NewScheduler(redisConfig)
 	if err != nil {
-		t.Fatalf("Failed to register cron job: %v", err)
+		t.Fatalf("Failed to create scheduler: %v", err)
 	}
 
-	// Register a periodic job
-	_, err = scheduler.RegisterPeriodic(30*time.Minute, jobType, payload) // Every 30 minutes
-	if err != nil {
-		t.Fatalf("Failed to register periodic job: %v", err)
-	}
+	go scheduler.Start()
 
-	// Start the scheduler in a goroutine to not block the test
-	go func() {
-		if err := scheduler.Start(); err != nil {
-			log.Fatalf("Failed to start scheduler: %v", err)
-		}
-	}()
-
-	// Let the scheduler run for some time to possibly enqueue jobs
 	time.Sleep(2 * time.Second)
 
-	// Stop the scheduler
 	if err := scheduler.Stop(); err != nil {
 		t.Fatalf("Failed to stop scheduler: %v", err)
 	}
 }
 
-func TestSchedulerErrorHandling(t *testing.T) {
+func TestSchedulerRegisterWithInvalidCronSpec(t *testing.T) {
 	redisConfig := getRedisConfig()
 
-	var encounteredError bool
-	errorHandler := func(job *queue.Job, err error) {
-		encounteredError = true
+	// Initialize a Scheduler
+	scheduler, _ := queue.NewScheduler(redisConfig)
+
+	// Register a job with an invalid cron expression to trigger the error handler.
+	_, err := scheduler.RegisterCron("wrong cron", "error_job", nil)
+
+	// Verify the error was triggered.
+	if err == nil {
+		t.Fatal("Expected an error when registering a job with an invalid cron expression, but got nil")
+	}
+}
+
+func TestSchedulerPreEnqueueHook(t *testing.T) {
+	redisConfig := getRedisConfig()
+
+	preEnqueueCalled := false
+	preEnqueueHook := func(job *queue.Job) {
+		preEnqueueCalled = true
+		t.Log("PreEnqueueFunc called")
 	}
 
-	scheduler, _ := queue.NewScheduler(redisConfig,
-		queue.WithSchedulerEnqueueErrorHandler(errorHandler),
-	)
+	scheduler, err := queue.NewScheduler(redisConfig, queue.WithPreEnqueueFunc(preEnqueueHook))
+	if err != nil {
+		t.Fatalf("Failed to create scheduler with pre enqueue hook: %v", err)
+	}
 
-	// Attempt to register a job which should fail and invoke the error handler
-	scheduler.RegisterCron("wrong cron", "error_job", nil) // Every hour
+	jobType := "pre_enqueue_test"
+	payload := map[string]interface{}{"data": "pre"}
 
-	// Start the scheduler, expecting it to attempt and fail to enqueue the job
+	_, err = scheduler.RegisterCron("@every 1s", jobType, payload)
+	if err != nil {
+		t.Fatalf("Failed to register cron job: %v", err)
+	}
+
 	go scheduler.Start()
+	defer scheduler.Stop()
 
-	// Wait briefly for the scheduler to attempt job enqueueing
-	time.Sleep(1 * time.Second)
+	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
 
-	if !encounteredError {
-		t.Fatal("Expected an error to be encountered and handled, but it was not")
+	if !preEnqueueCalled {
+		t.Error("Expected PreEnqueueFunc to be called, but it was not")
+	}
+}
+
+func TestSchedulerPostEnqueueHook(t *testing.T) {
+	redisConfig := getRedisConfig()
+
+	postEnqueueCalled := false
+	postEnqueueHook := func(job *queue.JobInfo, err error) {
+		postEnqueueCalled = true
+		t.Logf("PostEnqueueFunc called with job: %+v, error: %v", job, err)
 	}
 
-	scheduler.Stop()
+	scheduler, err := queue.NewScheduler(redisConfig, queue.WithPostEnqueueFunc(postEnqueueHook))
+	if err != nil {
+		t.Fatalf("Failed to create scheduler with post enqueue hook: %v", err)
+	}
+
+	jobType := "post_enqueue_test"
+	payload := map[string]interface{}{"data": "post"}
+
+	_, err = scheduler.RegisterCron("@every 1s", jobType, payload)
+	if err != nil {
+		t.Fatalf("Failed to register cron job: %v", err)
+	}
+
+	go scheduler.Start()
+	defer scheduler.Stop()
+
+	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
+
+	if !postEnqueueCalled {
+		t.Error("Expected PostEnqueueFunc to be called, but it was not")
+	}
 }

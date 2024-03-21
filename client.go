@@ -97,7 +97,7 @@ func (c *Client) Enqueue(jobType string, payload interface{}, opts ...JobOption)
 
 // EnqueueJob adds a job to the queue based on the provided Job instance.
 func (c *Client) EnqueueJob(job *Job) (string, error) {
-	task, err := job.ConvertToAsynqTask()
+	task, opts, err := job.ConvertToAsynqTask()
 	if err != nil {
 		c.errorHandler.HandleError(err, job)
 		return "", err
@@ -110,14 +110,13 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 	}
 
 	// Prepare task options with retention if applicable
-	var taskOpts []asynq.Option
 	if retention > 0 {
-		taskOpts = append(taskOpts, asynq.Retention(retention))
+		opts = append(opts, asynq.Retention(retention))
 	}
-	// taskOpts = append(taskOpts, asynq.TaskID(job.Fingerprint))
+	// opts = append(opts, asynq.TaskID(job.Fingerprint))
 
 	// Enqueue the task with the prepared options
-	result, err := c.asynqClient.Enqueue(task, taskOpts...)
+	result, err := c.asynqClient.Enqueue(task, opts...)
 	if err != nil {
 		c.errorHandler.HandleError(err, job)
 		return "", fmt.Errorf("%w: %v", ErrEnqueueJob, err)
