@@ -158,6 +158,11 @@ func (s *Scheduler) RegisterPeriodicJob(interval time.Duration, job *Job) (strin
 	return s.configProvider.RegisterCronJob(spec, job)
 }
 
+// UnregisterCronJob removes a scheduled cron job using its identifier.
+func (s *Scheduler) UnregisterCronJob(identifier string) error {
+	return s.configProvider.UnregisterJob(identifier)
+}
+
 // Start begins the scheduler to enqueue tasks as per the schedule.
 func (s *Scheduler) Start() error {
 	return s.taskManager.Run()

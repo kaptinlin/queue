@@ -9,11 +9,13 @@ import (
 
 var (
 	ErrJobAlreadyExists = errors.New("job already exists")
+	ErrorJobNotFound    = errors.New("job not found")
 )
 
 type ConfigProvider interface {
 	asynq.PeriodicTaskConfigProvider
 	RegisterCronJob(spec string, job *Job) (string, error)
+	UnregisterJob(identifier string) error
 }
 
 type JobConfig struct {
@@ -24,7 +26,7 @@ type JobConfig struct {
 // MemoryConfigProvider stores and provides job configurations for periodic execution.
 type MemoryConfigProvider struct {
 	mu   sync.Mutex
-	jobs map[string]JobConfig // Maps job fingerprints to their configurations.
+	jobs map[string]JobConfig // Maps job identifiers to their configurations.
 }
 
 // NewMemoryConfigProvider initializes a new instance of MemoryConfigProvider.
@@ -49,6 +51,19 @@ func (m *MemoryConfigProvider) RegisterCronJob(spec string, job *Job) (string, e
 	}
 
 	return job.Fingerprint, nil
+}
+
+// UnregisterJob removes a job configuration based on its identifier.
+func (m *MemoryConfigProvider) UnregisterJob(identifier string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, exists := m.jobs[identifier]; !exists {
+		return ErrorJobNotFound
+	}
+
+	delete(m.jobs, identifier)
+	return nil
 }
 
 // GetConfigs returns a slice of asynq.PeriodicTaskConfig for all registered jobs.
