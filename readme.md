@@ -36,14 +36,18 @@ if err != nil {
     log.Fatalf("Error initializing client: %v", err)
 }
 ```
-
 ### Job Enqueueing
 
-Quickly enqueue jobs specifying their type and payload:
+Enqueue jobs by specifying their type and a structured payload for clear and concise data handling:
 
 ```go
+type EmailPayload struct {
+    Email   string `json:"email"`
+    Content string `json:"content"`
+}
+
 jobType := "email:send"
-payload := map[string]interface{}{"email": "user@example.com", "content": "Welcome!"}
+payload := EmailPayload{Email: "user@example.com", Content: "Welcome to our service!"}
 
 _, err = client.Enqueue(jobType, payload, queue.WithDelay(5*time.Second))
 if err != nil {
@@ -51,7 +55,7 @@ if err != nil {
 }
 ```
 
-For more control over job configuration, use a `Job` instance:
+Alternatively, for direct control over job configuration, use a `Job` instance:
 
 ```go
 job := queue.NewJob(jobType, payload, queue.WithDelay(5*time.Second))
@@ -60,13 +64,21 @@ if _, err := client.EnqueueJob(job); err != nil {
 }
 ```
 
+This approach allows you to specify additional job options such as execution delay, directly within the `Job` object.
+
 ### Handling Jobs
 
-Define a function to process jobs of a specific type:
+Define a function to process jobs of a specific type. Utilize the `EmailPayload` struct for type-safe payload handling:
 
 ```go
 func handleEmailSendJob(ctx context.Context, job *queue.Job) error {
-    log.Printf("Sending email to: %s", job.Payload["email"])
+    var payload EmailPayload
+    if err := job.DecodePayload(&payload); err != nil {
+        return fmt.Errorf("failed to decode payload: %w", err)
+    }
+
+    log.Printf("Sending email to: %s with content: %s", payload.Email, payload.Content)
+    // Implement the email sending logic here.
     return nil
 }
 ```
