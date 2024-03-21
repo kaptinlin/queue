@@ -23,6 +23,7 @@ type SchedulerOptions struct {
 	SyncInterval    time.Duration
 	Location        *time.Location
 	ConfigProvider  ConfigProvider
+	Logger          Logger
 	PreEnqueueFunc  func(job *Job)                // Pre-enqueue hook
 	PostEnqueueFunc func(job *JobInfo, err error) // Post-enqueue hook
 }
@@ -48,6 +49,13 @@ func WithSchedulerLocation(loc *time.Location) SchedulerOption {
 func WithConfigProvider(provider *MemoryConfigProvider) SchedulerOption {
 	return func(opts *SchedulerOptions) {
 		opts.ConfigProvider = provider
+	}
+}
+
+// WithSchedulerLogger sets a custom logger for the Scheduler.
+func WithSchedulerLogger(logger Logger) SchedulerOption {
+	return func(opts *SchedulerOptions) {
+		opts.Logger = logger
 	}
 }
 
@@ -93,6 +101,7 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 			SyncInterval:               options.SyncInterval,
 			SchedulerOpts: &asynq.SchedulerOpts{
 				Location: options.Location,
+				Logger:   options.Logger,
 				PreEnqueueFunc: func(task *asynq.Task, opts []asynq.Option) {
 					if options.PreEnqueueFunc != nil {
 						job, _ := NewJobFromAsynqTask(task)

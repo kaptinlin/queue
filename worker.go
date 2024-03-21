@@ -51,7 +51,8 @@ type WorkerConfig struct {
 	Concurrency  int
 	Queues       map[string]int
 	ErrorHandler WorkerErrorHandler
-	limiter      *rate.Limiter
+	Limiter      *rate.Limiter
+	Logger       Logger
 }
 
 // validate checks if the WorkerConfig's fields are correctly set, returning an error if any field is invalid.
@@ -101,7 +102,7 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 		groups:       make(map[string]*Group),
 		handlers:     make(map[string]*Handler),
 		errorHandler: config.ErrorHandler,
-		limiter:      config.limiter,
+		limiter:      config.Limiter,
 	}
 	worker.setupAsynqServer(redisConfig, config)
 
@@ -188,6 +189,7 @@ func (w *Worker) setupAsynqServer(redisConfig *RedisConfig, config *WorkerConfig
 		Queues:          config.Queues,
 		RetryDelayFunc:  w.retryDelayFunc,
 		IsFailure:       w.isFailure,
+		Logger:          config.Logger,
 	})
 }
 
@@ -277,7 +279,7 @@ func WithWorkerStopTimeout(timeout time.Duration) WorkerOption {
 // WithWorkerRateLimiter configures a global rate limiter for the worker.
 func WithWorkerRateLimiter(limiter *rate.Limiter) WorkerOption {
 	return func(c *WorkerConfig) {
-		c.limiter = limiter
+		c.Limiter = limiter
 	}
 }
 
@@ -311,5 +313,12 @@ func WithWorkerQueues(queues map[string]int) WorkerOption {
 func WithWorkerErrorHandler(handler WorkerErrorHandler) WorkerOption {
 	return func(c *WorkerConfig) {
 		c.ErrorHandler = handler
+	}
+}
+
+// WithWorkerLogger configures a custom logger for the worker.
+func WithWorkerLogger(logger Logger) WorkerOption {
+	return func(c *WorkerConfig) {
+		c.Logger = logger
 	}
 }
