@@ -46,7 +46,7 @@ func WithSchedulerLocation(loc *time.Location) SchedulerOption {
 }
 
 // WithConfigProvider sets a custom config provider for the Scheduler.
-func WithConfigProvider(provider *MemoryConfigProvider) SchedulerOption {
+func WithConfigProvider(provider ConfigProvider) SchedulerOption {
 	return func(opts *SchedulerOptions) {
 		opts.ConfigProvider = provider
 	}
