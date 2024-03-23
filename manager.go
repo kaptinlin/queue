@@ -114,30 +114,18 @@ func (s *Manager) ListQueues() ([]*QueueInfo, error) {
 }
 
 // GetQueueInfo gets detailed information about a queue.
-func (s *Manager) GetQueueInfo(queueName string) (*QueueInfo, []*QueueDailyStats, error) {
+func (s *Manager) GetQueueInfo(queueName string) (*QueueInfo, error) {
 	qinfo, err := s.Inspector.GetQueueInfo(queueName)
 	if err != nil {
 		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
-			return nil, nil, ErrQueueNotFound
+			return nil, ErrQueueNotFound
 		}
-		return nil, nil, err
+		return nil, err
 	}
 
 	snapshot := toQueueInfo(qinfo)
 
-	// Assuming a fixed number of days for history stats.
-	const days = 7
-	dstats, err := s.Inspector.History(queueName, days)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	var QueuedailyStats []*QueueDailyStats
-	for _, d := range dstats {
-		QueuedailyStats = append(QueuedailyStats, toQueueDailyStats(d))
-	}
-
-	return snapshot, QueuedailyStats, nil
+	return snapshot, nil
 }
 
 // ListQueueStats lists statistics for a queue over the past n days.

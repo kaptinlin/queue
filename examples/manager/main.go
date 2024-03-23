@@ -50,7 +50,7 @@ func main() {
 	}
 
 	// Example operation: Getting queue information.
-	queueInfo, dailyStats, err := manager.GetQueueInfo("default")
+	queueInfo, err := manager.GetQueueInfo("default")
 	if err != nil {
 		fmt.Printf("Error getting queue information: %v\n", err)
 		return
@@ -58,6 +58,12 @@ func main() {
 	fmt.Printf("Queue Info: Name=%s, Size=%d, Processed=%d, Succeeded=%d, Failed=%d\n",
 		queueInfo.Queue, queueInfo.Size, queueInfo.Processed, queueInfo.Succeeded, queueInfo.Failed)
 
+	// Example operation: Listing queue stats.
+	dailyStats, err := manager.ListQueueStats("default", 7)
+	if err != nil {
+		fmt.Printf("Error getting queue stats: %v\n", err)
+		return
+	}
 	fmt.Println("Daily Stats:")
 	for i, stats := range dailyStats {
 		fmt.Printf("Day %d: Date=%s, Processed=%d, Succeeded=%d, Failed=%d\n",

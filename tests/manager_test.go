@@ -46,13 +46,12 @@ func TestManager_GetQueueInfo(t *testing.T) {
 	}
 
 	queueName := queue.DefaultQueue
-	queueInfo, dailyStats, err := manager.GetQueueInfo(queueName)
+	queueInfo, err := manager.GetQueueInfo(queueName)
 	if err != nil {
 		t.Errorf("Error getting queue info for '%s': %v", queueName, err)
 		return
 	}
 	t.Logf("Queue '%s' info: %+v", queueName, queueInfo)
-	t.Logf("Daily stats: %+v", dailyStats)
 }
 
 // TestManager_ListJobsByState tests listing jobs by their state in a specific queue.
