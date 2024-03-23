@@ -16,6 +16,9 @@ var (
 	ErrGroupRequiredForAggregation  = errors.New("group identifier required for aggregating jobs operation")
 	ErrUnsupportedJobStateForAction = errors.New("unsupported job state for the requested action")
 	ErrRedisClientTypeNotSupported  = errors.New("redis client type not supported")
+	ErrQueueNotFound                = errors.New("queue not found")
+	ErrJobNotFound                  = errors.New("job not found")
+	ErrWorkerNotFound               = errors.New("worker not found")
 )
 
 // ManagerInterface defines operations for managing and retrieving information about workers and their jobs.
@@ -89,7 +92,7 @@ func (s *Manager) GetWorkerInfo(workerID string) (*WorkerInfo, error) {
 		}
 	}
 
-	return nil, nil
+	return nil, ErrWorkerNotFound
 }
 
 // ListQueues lists all queue names.
@@ -114,6 +117,9 @@ func (s *Manager) ListQueues() ([]*QueueInfo, error) {
 func (s *Manager) GetQueueInfo(queueName string) (*QueueInfo, []*QueueDailyStats, error) {
 	qinfo, err := s.Inspector.GetQueueInfo(queueName)
 	if err != nil {
+		if errors.Is(err, asynq.ErrQueueNotFound) {
+			return nil, nil, ErrQueueNotFound
+		}
 		return nil, nil, err
 	}
 
@@ -138,6 +144,9 @@ func (s *Manager) GetQueueInfo(queueName string) (*QueueInfo, []*QueueDailyStats
 func (s *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats, error) {
 	dstats, err := s.Inspector.History(queueName, days)
 	if err != nil {
+		if errors.Is(err, asynq.ErrQueueNotFound) {
+			return nil, ErrQueueNotFound
+		}
 		return nil, err
 	}
 
@@ -151,17 +160,38 @@ func (s *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats
 
 // DeleteQueue deletes a queue by its name.
 func (s *Manager) DeleteQueue(queueName string, force bool) error {
-	return s.Inspector.DeleteQueue(queueName, force)
+	err := s.Inspector.DeleteQueue(queueName, force)
+	if err != nil {
+		if errors.Is(err, asynq.ErrQueueNotFound) {
+			return ErrQueueNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 // PauseQueue pauses a queue by its name.
 func (s *Manager) PauseQueue(queueName string) error {
-	return s.Inspector.PauseQueue(queueName)
+	err := s.Inspector.PauseQueue(queueName)
+	if err != nil {
+		if errors.Is(err, asynq.ErrQueueNotFound) {
+			return ErrQueueNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 // ResumeQueue resumes a paused queue by its name.
 func (s *Manager) ResumeQueue(queueName string) error {
-	return s.Inspector.UnpauseQueue(queueName)
+	err := s.Inspector.UnpauseQueue(queueName)
+	if err != nil {
+		if errors.Is(err, asynq.ErrQueueNotFound) {
+			return ErrQueueNotFound
+		}
+		return err
+	}
+	return nil
 }
 
 // ListJobsByState lists jobs in a specified queue filtered by their state.
@@ -241,6 +271,9 @@ func (s *Manager) ListActiveJobs(queue string, size, page int) ([]*JobInfo, erro
 func (s *Manager) GetJobInfo(queue, jobID string) (*JobInfo, error) {
 	taskInfo, err := s.Inspector.GetTaskInfo(queue, jobID)
 	if err != nil {
+		if errors.Is(err, asynq.ErrTaskNotFound) {
+			return nil, ErrJobNotFound
+		}
 		return nil, err
 	}
 
@@ -249,7 +282,16 @@ func (s *Manager) GetJobInfo(queue, jobID string) (*JobInfo, error) {
 
 // RunJob triggers immediate execution of a job with the specified ID.
 func (s *Manager) RunJob(queue, jobID string) error {
-	return s.Inspector.RunTask(queue, jobID)
+	err := s.Inspector.RunTask(queue, jobID)
+
+	if err != nil {
+		if errors.Is(err, asynq.ErrTaskNotFound) {
+			return ErrJobNotFound
+		}
+		return err
+	}
+
+	return nil
 }
 
 // RunJobsByState triggers all jobs in a specified queue and state to run immediately.
@@ -297,7 +339,16 @@ func (s *Manager) BatchRunJobs(queue string, jobIDs []string) ([]string, []strin
 
 // ArchiveJob moves a job with the specified ID to the archive.
 func (s *Manager) ArchiveJob(queue, jobID string) error {
-	return s.Inspector.ArchiveTask(queue, jobID)
+	err := s.Inspector.ArchiveTask(queue, jobID)
+
+	if err != nil {
+		if errors.Is(err, asynq.ErrTaskNotFound) {
+			return ErrJobNotFound
+		}
+		return err
+	}
+
+	return nil
 }
 
 // ArchiveJobsByState archives all jobs in a specified queue based on their state.
@@ -353,7 +404,16 @@ func (s *Manager) BatchArchiveJobs(queue string, jobIDs []string) ([]string, []s
 
 // CancelJob cancels a job with the specified ID.
 func (s *Manager) CancelJob(jobID string) error {
-	return s.Inspector.CancelProcessing(jobID)
+	err := s.Inspector.CancelProcessing(jobID)
+
+	if err != nil {
+		if errors.Is(err, asynq.ErrTaskNotFound) {
+			return ErrJobNotFound
+		}
+		return err
+	}
+
+	return nil
 }
 
 // CancelActiveJobs cancels all active jobs in the specified queue.
@@ -402,7 +462,16 @@ func (s *Manager) BatchCancelJobs(jobIDs []string) ([]string, []string, error) {
 
 // DeleteJob deletes a job with the specified ID from its queue.
 func (s *Manager) DeleteJob(queue, jobID string) error {
-	return s.Inspector.DeleteTask(queue, jobID)
+	err := s.Inspector.DeleteTask(queue, jobID)
+
+	if err != nil {
+		if errors.Is(err, asynq.ErrTaskNotFound) {
+			return ErrJobNotFound
+		}
+		return err
+	}
+
+	return nil
 }
 
 // DeleteJobsByState deletes all jobs in a specified queue based on their state.
