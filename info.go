@@ -84,6 +84,7 @@ type QueueInfo struct {
 	Retry       int           `json:"retry"`
 	Archived    int           `json:"archived"`
 	Completed   int           `json:"completed"`
+	Aggregating int           `json:"aggregating"`
 	Processed   int           `json:"processed"`
 	Succeeded   int           `json:"succeeded"`
 	Failed      int           `json:"failed"`
@@ -108,9 +109,10 @@ func toQueueInfo(info *asynq.QueueInfo) *QueueInfo {
 		Retry:       info.Retry,
 		Archived:    info.Archived,
 		Completed:   info.Completed,
-		Processed:   info.Processed,
-		Succeeded:   info.Processed - info.Failed,
-		Failed:      info.Failed,
+		Aggregating: info.Aggregating,
+		Processed:   info.ProcessedTotal,
+		Succeeded:   info.ProcessedTotal - info.FailedTotal,
+		Failed:      info.FailedTotal,
 		Paused:      info.Paused,
 		Timestamp:   info.Timestamp,
 	}

@@ -25,6 +25,7 @@ var (
 // ManagerInterface defines operations for managing and retrieving information about workers and their jobs.
 type ManagerInterface interface {
 	ListWorkers() ([]*WorkerInfo, error)
+	GetWorkerInfo(workerID string) (*WorkerInfo, error)
 	ListQueues() ([]*QueueInfo, error)
 	GetQueueInfo(queueName string) (*QueueInfo, []*QueueDailyStats, error)
 	ListQueueStats(queueName string, days int) ([]*QueueDailyStats, error)
