@@ -117,7 +117,7 @@ func (s *Manager) ListQueues() ([]*QueueInfo, error) {
 func (s *Manager) GetQueueInfo(queueName string) (*QueueInfo, []*QueueDailyStats, error) {
 	qinfo, err := s.Inspector.GetQueueInfo(queueName)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) {
+		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
 			return nil, nil, ErrQueueNotFound
 		}
 		return nil, nil, err
@@ -144,7 +144,7 @@ func (s *Manager) GetQueueInfo(queueName string) (*QueueInfo, []*QueueDailyStats
 func (s *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats, error) {
 	dstats, err := s.Inspector.History(queueName, days)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) {
+		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
 			return nil, ErrQueueNotFound
 		}
 		return nil, err
@@ -162,7 +162,7 @@ func (s *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats
 func (s *Manager) DeleteQueue(queueName string, force bool) error {
 	err := s.Inspector.DeleteQueue(queueName, force)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) {
+		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
 			return ErrQueueNotFound
 		}
 		return err
@@ -174,7 +174,7 @@ func (s *Manager) DeleteQueue(queueName string, force bool) error {
 func (s *Manager) PauseQueue(queueName string) error {
 	err := s.Inspector.PauseQueue(queueName)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) {
+		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
 			return ErrQueueNotFound
 		}
 		return err
@@ -186,7 +186,7 @@ func (s *Manager) PauseQueue(queueName string) error {
 func (s *Manager) ResumeQueue(queueName string) error {
 	err := s.Inspector.UnpauseQueue(queueName)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) {
+		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
 			return ErrQueueNotFound
 		}
 		return err
@@ -632,4 +632,8 @@ func parseRedisInfo(infoStr string) map[string]string {
 		}
 	}
 	return info
+}
+
+func isQueueNotFoundError(err error) bool {
+	return strings.Contains(err.Error(), "does not exist")
 }
