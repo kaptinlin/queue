@@ -17,6 +17,7 @@ var (
 	ErrUnsupportedJobStateForAction = errors.New("unsupported job state for the requested action")
 	ErrRedisClientTypeNotSupported  = errors.New("redis client type not supported")
 	ErrQueueNotFound                = errors.New("queue not found")
+	ErrQueueNotEmpty                = errors.New("queue is not empty")
 	ErrJobNotFound                  = errors.New("job not found")
 	ErrWorkerNotFound               = errors.New("worker not found")
 )
@@ -152,6 +153,9 @@ func (s *Manager) DeleteQueue(queueName string, force bool) error {
 	if err != nil {
 		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
 			return ErrQueueNotFound
+		}
+		if errors.Is(err, asynq.ErrQueueNotEmpty) {
+			return ErrQueueNotEmpty
 		}
 		return err
 	}
