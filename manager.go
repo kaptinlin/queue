@@ -49,7 +49,7 @@ type ManagerInterface interface {
 	BatchDeleteJobs(queue string, jobIDs []string) ([]string, []string, error)
 	RunAggregatingJobs(queue, group string) (int, error)
 	ArchiveAggregatingJobs(queue, group string) (int, error)
-	DeleteAggregatingTasks(queue, group string) (int, error)
+	DeleteAggregatingJobs(queue, group string) (int, error)
 	GetRedisInfo() (*RedisInfo, error)
 }
 
@@ -522,8 +522,8 @@ func (s *Manager) ArchiveAggregatingJobs(queue, group string) (int, error) {
 	return s.Inspector.ArchiveAllAggregatingTasks(queue, group)
 }
 
-// DeleteAggregatingTasks deletes all aggregating tasks in a specified queue and group.
-func (s *Manager) DeleteAggregatingTasks(queue, group string) (int, error) {
+// DeleteAggregatingJobs deletes all aggregating tasks in a specified queue and group.
+func (s *Manager) DeleteAggregatingJobs(queue, group string) (int, error) {
 	return s.Inspector.DeleteAllAggregatingTasks(queue, group)
 }
 
