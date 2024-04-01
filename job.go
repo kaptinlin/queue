@@ -108,6 +108,9 @@ func (j *Job) ConvertToAsynqOptions() []asynq.Option {
 	opts := make([]asynq.Option, 0)
 
 	// Apply job options to the Asynq task.
+	if j.Options.Queue != "" {
+		opts = append(opts, asynq.Queue(j.Options.Queue))
+	}
 	if j.Options.Delay > 0 {
 		opts = append(opts, asynq.ProcessIn(j.Options.Delay))
 	}

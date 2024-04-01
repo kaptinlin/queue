@@ -1,25 +1,21 @@
 # Priority Queues
 
-Priority queues are essential for managing background tasks efficiently, allowing critical tasks to be processed before less urgent ones. This system enhances responsiveness and resource allocation in applications.
+Priority queues are a powerful tool for managing jobs in your application, enabling the prioritization of important jobs over less critical ones. This approach ensures that high-priority jobs are processed first, improving your application's responsiveness and efficiency in resource utilization. Furthermore, priority queues offer the flexibility to run different jobs on different workers, enhancing scalability and control.
 
-## Configuring Queue Priorities
+## Setting Up Priority Queues
 
-To implement queue priorities, configure your worker to recognize multiple queues, each with a distinct priority level. Higher priority queues get more processing attention than their lower priority counterparts.
+To leverage priority queues, configure your workers to recognize multiple queues, each associated with a specific priority level. This configuration ensures that jobs in higher priority queues are attended to before those in lower priority queues.
 
-### Worker Configuration
+### Worker Configuration for Priority Queues
 
-Assign priorities across different queues by setting up your worker as follows:
+Here’s how to configure your worker to recognize queues with different priorities:
 
 ```go
-import (
-    "github.com/kaptinlin/queue"
-)
+import "github.com/kaptinlin/queue"
 
 func main() {
-    // Initialize Redis configuration
     redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
 
-    // Configure the worker with queues of varying priorities
     worker, err := queue.NewWorker(redisConfig,
         queue.WithWorkerQueue("critical", 6), // High priority
         queue.WithWorkerQueue("default", 3),  // Medium priority
@@ -29,7 +25,6 @@ func main() {
         panic(err)
     }
 
-    // Start and ensure graceful shutdown of the worker
     defer worker.Stop()
     if err := worker.Start(); err != nil {
         panic(err)
@@ -37,11 +32,22 @@ func main() {
 }
 ```
 
-This configuration establishes three queues—`critical`, `default`, and `low`—with priority levels 6, 3, and 1, respectively.
+This setup introduces three priority levels across the `critical`, `default`, and `low` queues, with respective priorities of 6, 3, and 1.
 
-### Enqueuing Tasks with Priority
+### Job Handling with Priority
 
-To enqueue tasks with priority, specify the queue during job creation:
+To handle jobs with priority, ensure the worker is configured to process jobs from the specific queue. Register job handlers for each queue as follows to prevent `TaskNotFoundError` issues:
+
+```go
+err = worker.Register("email:send", handleEmailSendJob, queue.WithJobQueue("critical"))
+if err != nil {
+    panic(err)
+}
+```
+
+### Enqueuing Jobs with Priority
+
+When enqueuing jobs, explicitly specify the queue to ensure they are processed according to their priority:
 
 ```go
 client, err := queue.NewClient(redisConfig)
@@ -49,23 +55,13 @@ if err != nil {
     panic(err)
 }
 
-// Create a high-priority email notification job
 jobPayload := map[string]interface{}{"to": "user@example.com"}
-job := queue.NewJob("email_notification", jobPayload, queue.WithQueue("critical"))
+job := queue.NewJob("email:send", jobPayload, queue.WithQueue("critical"))
 
-// Enqueue the job
 _, err = client.EnqueueJob(job)
 if err != nil {
     panic(err)
 }
 ```
 
-This enqueues an `email_notification` job to the `critical` queue, ensuring it receives prompt attention.
-
-## Best Practices
-
-- **Task Prioritization:** Carefully consider each task's urgency. Prioritize tasks to optimize processing efficiency.
-- **Graceful Shutdown:** Always stop workers gracefully to safeguard against task loss.
-- **Performance Monitoring:** Regularly review and adjust queue priorities and configurations to align with your application's evolving needs.
-
-Employing priority queues can significantly improve your application's processing dynamics, ensuring that critical tasks are handled promptly without sacrificing overall task management flexibility.
+This example enqueues an `email:send` job to the `critical` queue, giving it higher processing priority.

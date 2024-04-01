@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/kaptinlin/queue"
 )
@@ -20,7 +21,7 @@ func main() {
 	payload := map[string]interface{}{
 		"input": "Hello, Queue!",
 	}
-	_, err = client.Enqueue(jobType, payload)
+	_, err = client.Enqueue(jobType, payload, queue.WithQueue("critical"), queue.WithRetention(time.Hour))
 	if err != nil {
 		log.Fatalf("Failed to enqueue job: %v", err)
 	}

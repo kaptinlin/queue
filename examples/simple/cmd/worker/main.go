@@ -13,12 +13,18 @@ func main() {
 		queue.WithRedisAddress("localhost:6379"),
 	)
 
-	worker, err := queue.NewWorker(redisConfig)
+	worker, err := queue.NewWorker(redisConfig, queue.WithWorkerQueues(
+		map[string]int{
+			"critical": 6,
+			"default":  3,
+			"low":      1,
+		},
+	))
 	if err != nil {
 		log.Fatalf("Failed to create worker: %v", err)
 	}
 
-	err = worker.Register("example_job", jobs.HandleExampleJob)
+	err = worker.Register("example_job", jobs.HandleExampleJob, queue.WithJobQueue("critical"))
 	if err != nil {
 		log.Fatalf("Failed to register job handler: %v", err)
 	}
