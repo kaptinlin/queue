@@ -245,10 +245,7 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// Initialize manager to retrieve job information
-	manager, err := setupTestManager()
-	if err != nil {
-		t.Fatalf("Failed to setup manager: %v", err)
-	}
+	manager := setupTestManager()
 	jobInfo, err := manager.GetJobInfo(queue.DefaultQueue, jobID)
 	if err != nil {
 		t.Fatalf("Failed to get job info: %v", err)

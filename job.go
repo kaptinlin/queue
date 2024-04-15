@@ -1,7 +1,7 @@
 package queue
 
 import (
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec
 	"encoding/json"
 	"fmt"
 	"time"
@@ -136,7 +136,7 @@ func (j *Job) fingerprint() {
 		return // Fingerprint already set, no need to regenerate.
 	}
 
-	hash := md5.New()
+	hash := md5.New() //nolint:gosec
 	hash.Write([]byte(j.Type))
 	payloadBytes, _ := json.Marshal(j.Payload)
 	hash.Write(payloadBytes)

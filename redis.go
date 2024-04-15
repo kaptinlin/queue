@@ -28,16 +28,16 @@ type RedisConfig struct {
 // validate checks if the RedisConfig's fields are correctly set.
 func (c *RedisConfig) Validate() error {
 	if c.Addr == "" {
-		return fmt.Errorf("address cannot be empty")
+		return ErrRedisEmptyAddress
 	}
 	if c.Network != "tcp" && c.Network != "unix" {
-		return fmt.Errorf("unsupported network type %q", c.Network)
+		return fmt.Errorf("%w: %q", ErrRedisUnsupportedNetwork, c.Network)
 	}
 	if _, _, err := net.SplitHostPort(c.Addr); err != nil && c.Network == "tcp" {
-		return fmt.Errorf("invalid address format: %w", err)
+		return fmt.Errorf("%w: %v", ErrRedisInvalidAddress, err)
 	}
 	if c.TLSConfig == nil && strings.HasPrefix(c.Addr, "rediss://") {
-		return fmt.Errorf("TLS config is required for secure Redis connections")
+		return ErrRedisTLSRequired
 	}
 	return nil
 }

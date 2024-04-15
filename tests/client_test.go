@@ -8,7 +8,7 @@ import (
 	"github.com/kaptinlin/queue"
 )
 
-func TestClient_Enqueue(t *testing.T) {
+func TestClientEnqueue(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	client, err := queue.NewClient(redisConfig)
@@ -26,7 +26,7 @@ func TestClient_Enqueue(t *testing.T) {
 	}
 }
 
-func TestClient_EnqueueJob(t *testing.T) {
+func TestClientEnqueueJob(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	client, err := queue.NewClient(redisConfig)
@@ -45,7 +45,7 @@ func TestClient_EnqueueJob(t *testing.T) {
 	}
 }
 
-func TestClient_WithClientRetention(t *testing.T) {
+func TestClientWithClientRetention(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	retentionPeriod := 24 * time.Hour
@@ -58,7 +58,7 @@ func TestClient_WithClientRetention(t *testing.T) {
 	defer client.Stop()
 }
 
-func TestClient_WithClientErrorHandler(t *testing.T) {
+func TestClientWithClientErrorHandler(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	handler := &CustomClientErrorHandler{}

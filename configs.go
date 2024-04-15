@@ -71,7 +71,7 @@ func (m *MemoryConfigProvider) GetConfigs() ([]*asynq.PeriodicTaskConfig, error)
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	var configs []*asynq.PeriodicTaskConfig
+	configs := make([]*asynq.PeriodicTaskConfig, 0, len(m.jobs))
 	for _, config := range m.jobs {
 		task, opts, err := config.Job.ConvertToAsynqTask()
 		if err != nil {

@@ -74,7 +74,7 @@ func (s *Manager) ListWorkers() ([]*WorkerInfo, error) {
 		return nil, err
 	}
 
-	var workers []*WorkerInfo
+	workers := make([]*WorkerInfo, 0, len(servers))
 	for _, server := range servers {
 		workers = append(workers, toWorkerInfo(server))
 	}
@@ -104,7 +104,7 @@ func (s *Manager) ListQueues() ([]*QueueInfo, error) {
 		return nil, err
 	}
 
-	var snapshots []*QueueInfo
+	snapshots := make([]*QueueInfo, 0, len(queues))
 	for _, queue := range queues {
 		qinfo, err := s.Inspector.GetQueueInfo(queue)
 		if err != nil {
@@ -140,7 +140,7 @@ func (s *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats
 		return nil, err
 	}
 
-	var QueuedailyStats []*QueueDailyStats
+	QueuedailyStats := make([]*QueueDailyStats, 0, len(dstats))
 	for _, d := range dstats {
 		QueuedailyStats = append(QueuedailyStats, toQueueDailyStats(d))
 	}
@@ -201,7 +201,7 @@ func (s *Manager) ListJobsByState(queue string, state JobState, size, page int) 
 	// For all other states, list jobs without WorkerInfo.
 	var tasks []*asynq.TaskInfo
 	var err error
-	switch state {
+	switch state { //nolint:exhaustive
 	case StatePending:
 		tasks, err = s.Inspector.ListPendingTasks(queue, asynq.PageSize(size), asynq.Page(page))
 	case StateRetry:
@@ -586,7 +586,7 @@ func (s *Manager) fetchQueueLocations() ([]*QueueLocation, error) {
 		return nil, err
 	}
 
-	var locations []*QueueLocation
+	locations := make([]*QueueLocation, 0, len(queues))
 	for _, queue := range queues {
 		keySlot, err := s.Inspector.ClusterKeySlot(queue)
 		if err != nil {

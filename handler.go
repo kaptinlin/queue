@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -105,32 +106,36 @@ func (h *Handler) composeMiddleware() {
 // Process executes the handler's job processing function, applying rate limiting and timeouts as configured.
 func (h *Handler) Process(ctx context.Context, job *Job) error {
 	if h.JobTimeout > 0 {
-		ctx, cancel := context.WithTimeout(ctx, h.JobTimeout)
-		defer cancel()
-
-		done := make(chan error, 1)
-		go func() {
-			if h.Limiter != nil && !h.Limiter.Allow() {
-				done <- &ErrRateLimit{RetryAfter: 10 * time.Second}
-			} else {
-				done <- h.Handle(ctx, job)
-			}
-		}()
-
-		select {
-		case err := <-done:
-			return err
-		case <-ctx.Done():
-			if ctx.Err() == context.DeadlineExceeded {
-				return fmt.Errorf("%w: %v", ErrJobProcessingTimeout, ctx.Err())
-			}
-
-			return ctx.Err()
-		}
-	} else {
-		if h.Limiter != nil && !h.Limiter.Allow() {
-			return &ErrRateLimit{RetryAfter: 10 * time.Second}
-		}
-		return h.Handle(ctx, job)
+		return h.processWithTimeout(ctx, job)
 	}
+	return h.processJob(ctx, job)
+}
+
+// processWithTimeout executes the handler's job processing function with a timeout.
+func (h *Handler) processWithTimeout(ctx context.Context, job *Job) error {
+	ctx, cancel := context.WithTimeout(ctx, h.JobTimeout)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- h.processJob(ctx, job)
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return fmt.Errorf("%w: %v", ErrJobProcessingTimeout, ctx.Err())
+		}
+		return ctx.Err()
+	}
+}
+
+// processJob executes the handler's job processing function, applying rate limiting if configured.
+func (h *Handler) processJob(ctx context.Context, job *Job) error {
+	if h.Limiter != nil && !h.Limiter.Allow() {
+		return &ErrRateLimit{RetryAfter: 10 * time.Second}
+	}
+	return h.Handle(ctx, job)
 }

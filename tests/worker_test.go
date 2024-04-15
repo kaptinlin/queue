@@ -11,7 +11,7 @@ import (
 	"github.com/kaptinlin/queue"
 )
 
-func TestWorker_StartStop(t *testing.T) {
+func TestWorkerStartStop(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	// Initialize worker with minimal configuration
@@ -34,7 +34,7 @@ func TestWorker_StartStop(t *testing.T) {
 	worker.Stop()
 }
 
-func TestWorker_Register(t *testing.T) {
+func TestWorkerRegister(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	worker, err := queue.NewWorker(redisConfig)
@@ -54,7 +54,7 @@ func TestWorker_Register(t *testing.T) {
 	}
 }
 
-func TestWorker_RegisterHandler(t *testing.T) {
+func TestWorkerRegisterHandler(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	worker, err := queue.NewWorker(redisConfig)
@@ -73,7 +73,7 @@ func TestWorker_RegisterHandler(t *testing.T) {
 	}
 }
 
-func TestWorker_WithWorkerErrorHandler(t *testing.T) {
+func TestWorkerWithWorkerErrorHandler(t *testing.T) {
 	redisConfig := getRedisConfig() // Ensure this returns a valid configuration
 
 	errorHandler := NewCustomWorkerErrorHandler()

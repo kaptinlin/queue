@@ -58,11 +58,11 @@ type WorkerConfig struct {
 // validate checks if the WorkerConfig's fields are correctly set, returning an error if any field is invalid.
 func (wc *WorkerConfig) Validate() error {
 	if wc.Concurrency <= 0 {
-		return errors.New("concurrency must be greater than 0")
+		return ErrInvalidWorkerConcurrency
 	}
 
 	if len(wc.Queues) == 0 {
-		return errors.New("at least one queue must be specified")
+		return ErrInvalidWorkerQueues
 	}
 
 	return nil
@@ -94,7 +94,7 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 
 	// Validate the WorkerConfig.
 	if err := config.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidWorkerConfig, err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidWorkerConfig, err)
 	}
 
 	// Setup the Worker instance.
@@ -147,11 +147,15 @@ func (w *Worker) RegisterHandler(handler *Handler) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if handler.JobType == "" || handler.JobQueue == "" {
-		return errors.New("handler must specify job type and queue")
+	if handler.JobType == "" {
+		return ErrNoJobTypeSpecified
+	}
+
+	if handler.JobQueue == "" {
+		return ErrNoJobQueueSpecified
 	}
 	if _, exists := w.handlers[handler.JobType]; exists {
-		return fmt.Errorf("handler for job type %s already registered", handler.JobType)
+		return fmt.Errorf("%w: %s", ErrHandlerAlreadyRegistered, handler.JobType)
 	}
 
 	w.handlers[handler.JobType] = handler
@@ -161,7 +165,7 @@ func (w *Worker) RegisterHandler(handler *Handler) error {
 // Start initiates the worker to process tasks, ensuring it has not already been started.
 func (w *Worker) Start() error {
 	if !w.started.CompareAndSwap(false, true) {
-		return fmt.Errorf("worker already started")
+		return ErrWorkerAlreadyStarted
 	}
 
 	mux := asynq.NewServeMux()
@@ -251,7 +255,8 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 
 // retryDelayFunc determines the delay before retrying a task after failure, using custom logic or falling back to Asynq's default.
 func (w *Worker) retryDelayFunc(count int, err error, task *asynq.Task) time.Duration {
-	if rateLimitErr, ok := err.(*ErrRateLimit); ok {
+	var rateLimitErr *ErrRateLimit
+	if errors.As(err, &rateLimitErr) {
 		return rateLimitErr.RetryAfter
 	}
 

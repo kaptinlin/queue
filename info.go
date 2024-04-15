@@ -64,7 +64,7 @@ func toActiveJobInfo(info *asynq.WorkerInfo) *ActiveJobInfo {
 
 // Convert a slice of Asynq WorkerInfo to a slice of ActiveJobInfo.
 func toActiveJobInfoList(infos []*asynq.WorkerInfo) []*ActiveJobInfo {
-	var activeJobs []*ActiveJobInfo
+	activeJobs := make([]*ActiveJobInfo, 0, len(infos))
 	for _, info := range infos {
 		activeJobs = append(activeJobs, toActiveJobInfo(info))
 	}
@@ -158,7 +158,7 @@ type JobInfo struct {
 	StartedAt  *time.Time `json:"started_at,omitempty"`
 	DeadlineAt *time.Time `json:"deadline_at,omitempty"`
 	IsOrphaned bool       `json:"is_orphaned,omitempty"`
-	// Addtional fields for aggregating tasks.
+	// Additional fields for aggregating tasks.
 	Group *string `json:"group,omitempty"`
 	// Result field for completed tasks.
 	Result *string `json:"result,omitempty"`

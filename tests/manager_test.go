@@ -8,12 +8,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// TestManager_ListWorkers tests the ListWorkers method of the Manager.
-func TestManager_ListWorkers(t *testing.T) {
-	manager, err := setupTestManager()
-	if err != nil {
-		t.Fatalf("Failed to setup test manager: %v", err)
-	}
+// TestManagerListWorkers tests the ListWorkers method of the Manager.
+func TestManagerListWorkers(t *testing.T) {
+	manager := setupTestManager()
 
 	workers, err := manager.ListWorkers()
 	if err != nil {
@@ -23,12 +20,9 @@ func TestManager_ListWorkers(t *testing.T) {
 	t.Logf("Found %d workers", len(workers))
 }
 
-// TestManager_ListQueues tests the ListQueues method of the Manager.
-func TestManager_ListQueues(t *testing.T) {
-	manager, err := setupTestManager()
-	if err != nil {
-		t.Fatalf("Failed to setup test manager: %v", err)
-	}
+// TestManagerListQueues tests the ListQueues method of the Manager.
+func TestManagerListQueues(t *testing.T) {
+	manager := setupTestManager()
 
 	queues, err := manager.ListQueues()
 	if err != nil {
@@ -38,12 +32,9 @@ func TestManager_ListQueues(t *testing.T) {
 	t.Logf("Found %d queues", len(queues))
 }
 
-// TestManager_GetQueueInfo tests the GetQueueInfo method for a specific queue.
-func TestManager_GetQueueInfo(t *testing.T) {
-	manager, err := setupTestManager()
-	if err != nil {
-		t.Fatalf("Failed to setup test manager: %v", err)
-	}
+// TestManagerGetQueueInfo tests the GetQueueInfo method for a specific queue.
+func TestManagerGetQueueInfo(t *testing.T) {
+	manager := setupTestManager()
 
 	queueName := queue.DefaultQueue
 	queueInfo, err := manager.GetQueueInfo(queueName)
@@ -54,12 +45,9 @@ func TestManager_GetQueueInfo(t *testing.T) {
 	t.Logf("Queue '%s' info: %+v", queueName, queueInfo)
 }
 
-// TestManager_ListJobsByState tests listing jobs by their state in a specific queue.
-func TestManager_ListJobsByState(t *testing.T) {
-	manager, err := setupTestManager()
-	if err != nil {
-		t.Fatalf("Failed to setup test manager: %v", err)
-	}
+// TestManagerListJobsByState tests listing jobs by their state in a specific queue.
+func TestManagerListJobsByState(t *testing.T) {
+	manager := setupTestManager()
 
 	queueName := queue.DefaultQueue
 	state := queue.StatePending // Example state
@@ -72,12 +60,12 @@ func TestManager_ListJobsByState(t *testing.T) {
 }
 
 // setupTestManager is a helper function to initialize a Manager instance for testing.
-func setupTestManager() (*queue.Manager, error) {
+func setupTestManager() *queue.Manager {
 	redisConfig := getRedisConfig()
 	asynqRedisOpt := redisConfig.ToAsynqRedisOpt()
 	inspector := asynq.NewInspector(asynqRedisOpt)
 	redisClient := asynqRedisOpt.MakeRedisClient().(redis.UniversalClient)
 
 	manager := queue.NewManager(redisClient, inspector)
-	return manager, nil
+	return manager
 }

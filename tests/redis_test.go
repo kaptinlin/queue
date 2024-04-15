@@ -8,7 +8,7 @@ import (
 	"github.com/kaptinlin/queue"
 )
 
-func TestRedisConfig_Validate(t *testing.T) {
+func TestRedisConfigValidate(t *testing.T) {
 	tests := []struct {
 		name    string
 		config  queue.RedisConfig
@@ -65,7 +65,7 @@ func TestRedisConfig_Validate(t *testing.T) {
 		})
 	}
 }
-func TestRedisConfig_Options(t *testing.T) {
+func TestRedisConfigOptions(t *testing.T) {
 	tests := []struct {
 		name     string
 		option   queue.RedisOption

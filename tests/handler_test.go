@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -16,7 +17,7 @@ func TestNewHandler(t *testing.T) {
 	}
 }
 
-func TestHandler_WithRateLimiter(t *testing.T) {
+func TestHandlerWithRateLimiter(t *testing.T) {
 	limiter := rate.NewLimiter(1, 1)
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error { return nil }, queue.WithRateLimiter(limiter))
 	if handler.Limiter != limiter {
@@ -24,7 +25,7 @@ func TestHandler_WithRateLimiter(t *testing.T) {
 	}
 }
 
-func TestHandler_WithJobTimeout(t *testing.T) {
+func TestHandlerWithJobTimeout(t *testing.T) {
 	timeout := 5 * time.Second
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error { return nil }, queue.WithJobTimeout(timeout))
 	if handler.JobTimeout != timeout {
@@ -32,7 +33,7 @@ func TestHandler_WithJobTimeout(t *testing.T) {
 	}
 }
 
-func TestHandler_WithJobQueue(t *testing.T) {
+func TestHandlerWithJobQueue(t *testing.T) {
 	queueName := "customQueue"
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error { return nil }, queue.WithJobQueue(queueName))
 	if handler.JobQueue != queueName {
@@ -40,7 +41,7 @@ func TestHandler_WithJobQueue(t *testing.T) {
 	}
 }
 
-func TestHandler_WithRetryDelayFunc(t *testing.T) {
+func TestHandlerWithRetryDelayFunc(t *testing.T) {
 	customFuncCalled := false
 	customFunc := func(attempt int, err error) time.Duration {
 		customFuncCalled = true
@@ -53,7 +54,7 @@ func TestHandler_WithRetryDelayFunc(t *testing.T) {
 	}
 }
 
-func TestHandler_Process_HandleExecuted(t *testing.T) {
+func TestHandlerProcessHandleExecuted(t *testing.T) {
 	handleExecuted := false
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error {
 		handleExecuted = true
@@ -69,7 +70,7 @@ func TestHandler_Process_HandleExecuted(t *testing.T) {
 	}
 }
 
-func TestHandler_Process_WithTimeout(t *testing.T) {
+func TestHandlerProcessWithTimeout(t *testing.T) {
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error {
 		time.Sleep(2 * time.Second) // Simulate work that exceeds the timeout
 		return nil
@@ -82,7 +83,7 @@ func TestHandler_Process_WithTimeout(t *testing.T) {
 	}
 }
 
-func TestHandler_Process_WithRateLimiter(t *testing.T) {
+func TestHandlerProcessWithRateLimiter(t *testing.T) {
 	limiter := rate.NewLimiter(rate.Every(10*time.Second), 1) // Allow only 1 operation per 10 seconds
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error {
 		return nil
@@ -96,7 +97,8 @@ func TestHandler_Process_WithRateLimiter(t *testing.T) {
 
 	// The second call should be limited
 	err := handler.Process(context.Background(), job)
-	if _, ok := err.(*queue.ErrRateLimit); !ok {
+	var rateLimitError *queue.ErrRateLimit
+	if !errors.As(err, &rateLimitError) {
 		t.Errorf("Process() expected ErrRateLimit error, got: %v", err)
 	}
 }
