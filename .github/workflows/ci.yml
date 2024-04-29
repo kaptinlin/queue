@@ -36,7 +36,7 @@ jobs:
           REDIS_ADDR: localhost:6379
 
       - name: Lint
-        uses: golangci/golangci-lint-action@v4
+        uses: golangci/golangci-lint-action@v5
         with:
           version: 'latest'
           args: -h
