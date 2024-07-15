@@ -4,7 +4,7 @@ go 1.21.4
 
 require (
 	github.com/hibiken/asynq v0.24.1
-	github.com/redis/go-redis/v9 v9.5.3
+	github.com/redis/go-redis/v9 v9.5.4
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/time v0.5.0
 )
