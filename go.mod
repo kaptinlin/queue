@@ -6,7 +6,7 @@ require (
 	github.com/hibiken/asynq v0.24.1
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/robfig/cron/v3 v3.0.1
-	golang.org/x/time v0.9.0
+	golang.org/x/time v0.10.0
 )
 
 require (
