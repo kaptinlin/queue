@@ -88,7 +88,7 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 	}
 
 	// Apply default queue configuration if none is provided.
-	if config.Queues == nil || len(config.Queues) == 0 {
+	if config.Queues == nil || len(config.Queues) == 0 { //nolint:gosimple
 		config.Queues = DefaultQueues
 	}
 

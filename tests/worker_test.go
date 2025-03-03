@@ -11,6 +11,8 @@ import (
 	"github.com/kaptinlin/queue"
 )
 
+var errIntentionalFailure = errors.New("intentional job failure")
+
 func TestWorkerStartStop(t *testing.T) {
 	redisConfig := getRedisConfig()
 
@@ -85,7 +87,7 @@ func TestWorkerWithWorkerErrorHandler(t *testing.T) {
 
 	jobType := "failJob"
 	if err := worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
-		return errors.New("intentional job failure")
+		return errIntentionalFailure
 	}); err != nil {
 		t.Fatalf("Failed to register failing job handler: %v", err)
 	}
