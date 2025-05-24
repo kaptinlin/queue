@@ -39,7 +39,7 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 		return nil, ErrInvalidRedisConfig
 	}
 	if err := redisConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidRedisConfig, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRedisConfig, err)
 	}
 
 	asynqClient := asynq.NewClient(asynq.RedisClientOpt{
@@ -119,7 +119,7 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 	result, err := c.asynqClient.Enqueue(task, opts...)
 	if err != nil {
 		c.errorHandler.HandleError(err, job)
-		return "", fmt.Errorf("%w: %v", ErrEnqueueJob, err)
+		return "", fmt.Errorf("%w: %w", ErrEnqueueJob, err)
 	}
 
 	return result.ID, nil

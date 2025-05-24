@@ -126,7 +126,7 @@ func (h *Handler) processWithTimeout(ctx context.Context, job *Job) error {
 		return err
 	case <-ctx.Done():
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("%w: %v", ErrJobProcessingTimeout, ctx.Err())
+			return fmt.Errorf("%w: %w", ErrJobProcessingTimeout, ctx.Err())
 		}
 		return ctx.Err()
 	}

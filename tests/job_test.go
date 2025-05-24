@@ -185,7 +185,11 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
-	defer client.Stop()
+	defer func() {
+		if err := client.Stop(); err != nil {
+			t.Errorf("Failed to stop client: %v", err)
+		}
+	}()
 
 	// Initialize the worker to process jobs
 	worker, err := queue.NewWorker(redisConfig)
@@ -228,7 +232,11 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 			t.Errorf("Worker failed to start: %v", err)
 		}
 	}()
-	defer worker.Stop()
+	defer func() {
+		if err := worker.Stop(); err != nil {
+			t.Errorf("Failed to stop worker: %v", err)
+		}
+	}()
 
 	// Enqueue the job
 	payload := TestJobPayload{Message: "Test WriteResult"}

@@ -28,7 +28,11 @@ func TestSchedulerStartAndStop(t *testing.T) {
 		t.Fatalf("Failed to create scheduler: %v", err)
 	}
 
-	go scheduler.Start()
+	go func() {
+		if err := scheduler.Start(); err != nil {
+			t.Errorf("Failed to start scheduler: %v", err)
+		}
+	}()
 
 	time.Sleep(2 * time.Second)
 
@@ -74,8 +78,16 @@ func TestSchedulerPreEnqueueHook(t *testing.T) {
 		t.Fatalf("Failed to register cron job: %v", err)
 	}
 
-	go scheduler.Start()
-	defer scheduler.Stop()
+	go func() {
+		if err := scheduler.Start(); err != nil {
+			t.Errorf("Failed to start scheduler: %v", err)
+		}
+	}()
+	defer func() {
+		if err := scheduler.Stop(); err != nil {
+			t.Errorf("Failed to stop scheduler: %v", err)
+		}
+	}()
 
 	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
 
@@ -106,8 +118,16 @@ func TestSchedulerPostEnqueueHook(t *testing.T) {
 		t.Fatalf("Failed to register cron job: %v", err)
 	}
 
-	go scheduler.Start()
-	defer scheduler.Stop()
+	go func() {
+		if err := scheduler.Start(); err != nil {
+			t.Errorf("Failed to start scheduler: %v", err)
+		}
+	}()
+	defer func() {
+		if err := scheduler.Stop(); err != nil {
+			t.Errorf("Failed to stop scheduler: %v", err)
+		}
+	}()
 
 	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
 

@@ -75,7 +75,7 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 		return nil, ErrInvalidRedisConfig
 	}
 	if err := redisConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidRedisConfig, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRedisConfig, err)
 	}
 
 	// Apply default configuration and options.
@@ -88,13 +88,13 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 	}
 
 	// Apply default queue configuration if none is provided.
-	if config.Queues == nil || len(config.Queues) == 0 {
+	if len(config.Queues) == 0 {
 		config.Queues = DefaultQueues
 	}
 
 	// Validate the WorkerConfig.
 	if err := config.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrInvalidWorkerConfig, err)
+		return nil, fmt.Errorf("%w: %w", ErrInvalidWorkerConfig, err)
 	}
 
 	// Setup the Worker instance.

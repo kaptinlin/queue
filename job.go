@@ -95,7 +95,7 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 
 	payloadBytes, err := json.Marshal(j.Payload)
 	if err != nil {
-		return nil, nil, fmt.Errorf("%w: %v", ErrSerializationFailure, err)
+		return nil, nil, fmt.Errorf("%w: %w", ErrSerializationFailure, err)
 	}
 
 	opts := j.ConvertToAsynqOptions()
@@ -150,7 +150,7 @@ func (j *Job) fingerprint() {
 func (j *Job) DecodePayload(v interface{}) error {
 	payloadBytes, err := json.Marshal(j.Payload)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrSerializationFailure, err)
+		return fmt.Errorf("%w: %w", ErrSerializationFailure, err)
 	}
 	return json.Unmarshal(payloadBytes, v)
 }
@@ -175,12 +175,12 @@ func (j *Job) WriteResult(result interface{}) error {
 
 	resultBytes, err := json.Marshal(result)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrSerializationFailure, err)
+		return fmt.Errorf("%w: %w", ErrSerializationFailure, err)
 	}
 
 	_, err = j.resultWriter.Write(resultBytes)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrFailedToWriteResult, err)
+		return fmt.Errorf("%w: %w", ErrFailedToWriteResult, err)
 	}
 
 	return nil

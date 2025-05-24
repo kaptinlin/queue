@@ -24,7 +24,11 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
-	defer client.Stop()
+	defer func() {
+		if err := client.Stop(); err != nil {
+			t.Errorf("Failed to stop client: %v", err)
+		}
+	}()
 
 	// Define the job payload and enqueue a new job.
 	payload := TestJobPayload{Message: "Hello, Test Queue!"}
@@ -59,7 +63,9 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 	}
 
 	// Register the job type and its handler with the worker.
-	worker.Register(testJobType, testJobHandler)
+	if err := worker.Register(testJobType, testJobHandler); err != nil {
+		t.Fatalf("Failed to register job handler: %v", err)
+	}
 
 	// Start the worker in a separate goroutine to process jobs.
 	go func() {
@@ -67,7 +73,11 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 			t.Errorf("Worker failed to start: %v", err)
 		}
 	}()
-	defer worker.Stop() // Ensure the worker is stopped after the test.
+	defer func() {
+		if err := worker.Stop(); err != nil {
+			t.Errorf("Failed to stop worker: %v", err)
+		}
+	}() // Ensure the worker is stopped after the test.
 
 	// Wait for the job handler to execute.
 	wg.Wait()

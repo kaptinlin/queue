@@ -15,7 +15,11 @@ func TestClientEnqueue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
-	defer client.Stop()
+	defer func() {
+		if err := client.Stop(); err != nil {
+			t.Errorf("Failed to stop client: %v", err)
+		}
+	}()
 
 	jobType := "testEnqueueJob"
 	payload := map[string]interface{}{"key": "value"}
@@ -33,7 +37,11 @@ func TestClientEnqueueJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client: %v", err)
 	}
-	defer client.Stop()
+	defer func() {
+		if err := client.Stop(); err != nil {
+			t.Errorf("Failed to stop client: %v", err)
+		}
+	}()
 
 	jobType := "testEnqueueJobJob"
 	payload := map[string]interface{}{"key": "value"}
@@ -55,7 +63,11 @@ func TestClientWithClientRetention(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create client with retention: %v", err)
 	}
-	defer client.Stop()
+	defer func() {
+		if err := client.Stop(); err != nil {
+			t.Errorf("Failed to stop client: %v", err)
+		}
+	}()
 }
 
 func TestClientWithClientErrorHandler(t *testing.T) {

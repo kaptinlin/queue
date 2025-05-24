@@ -135,6 +135,22 @@ Learn more about the library's advanced features by exploring our documentation 
 - [Error Handling](./docs/error_handling.md)
 - [Manager for Web UI Development](./docs/manager.md)
 
+## Testing
+
+We provide convenient Make targets for testing with Redis:
+
+```bash
+# Recommended: Run tests with automatic Redis setup and cleanup
+make test-with-redis
+
+# Or manually manage Redis and run tests
+make redis          # Start Redis service
+make test           # Run tests
+make redis-stop     # Stop Redis service
+```
+
+For more detailed testing instructions, see [TEST.md](./TEST.md).
+
 ## Contributing
 
 We welcome contributions! Please submit issues or pull requests on GitHub.

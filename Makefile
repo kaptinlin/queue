@@ -9,7 +9,18 @@ REQUIRED_GOLANGCI_LINT_VERSION := $(shell cat .golangci.version)
 MODULE_DIRS = .
 
 .PHONY: all
-all: lint test
+all: lint test-with-redis
+
+.PHONY: help
+help:
+	@echo "Available commands:"
+	@echo "  all            - Run linting and tests with Redis"
+	@echo "  test           - Run tests (requires Redis to be running)"
+	@echo "  test-with-redis - Start Redis, run tests, then cleanup"
+	@echo "  redis          - Start Redis service"
+	@echo "  redis-stop     - Stop Redis service"
+	@echo "  lint           - Run linter"
+	@echo "  clean          - Remove binary files"
 
 .PHONY: clean
 clean:
@@ -18,6 +29,37 @@ clean:
 .PHONY: test
 test:
 	cd tests && go test -v
+
+.PHONY: redis
+redis:
+	@echo "🚀 Starting Redis service..."
+	@docker-compose up -d
+	@echo "⏳ Waiting for Redis service to be ready..."
+	@timeout=30; \
+	counter=0; \
+	until docker-compose exec redis redis-cli ping 2>/dev/null | grep -q PONG; do \
+		sleep 1; \
+		counter=$$((counter + 1)); \
+		if [ $$counter -gt $$timeout ]; then \
+			echo "❌ Timeout waiting for Redis service"; \
+			docker-compose down; \
+			exit 1; \
+		fi; \
+	done
+	@echo "✅ Redis service is ready"
+
+.PHONY: redis-stop
+redis-stop:
+	@echo "🧹 Stopping Redis service..."
+	@docker-compose down
+
+.PHONY: test-with-redis
+test-with-redis: redis
+	@echo "🧪 Running tests..."
+	@$(MAKE) test
+	@echo "🧹 Cleaning up test environment..."
+	@docker-compose down
+	@echo "✅ Tests completed!"
 
 .PHONY: lint
 lint: golangci-lint tidy-lint
@@ -36,7 +78,7 @@ golangci-lint: install-golangci-lint
 	@$(foreach mod,$(MODULE_DIRS), \
 		(cd $(mod) && \
 		echo "[lint] golangci-lint: $(mod)" && \
-		$(GOBIN)/golangci-lint run --timeout=10m --path-prefix $(mod)) &&) true
+		$(GOBIN)/golangci-lint run --path-prefix $(mod)) &&) true
 
 .PHONY: tidy-lint
 tidy-lint:

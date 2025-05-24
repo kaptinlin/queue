@@ -50,7 +50,11 @@ func TestGlobalMiddleware(t *testing.T) {
 			log.Fatalf("Failed to start worker: %v", err)
 		}
 	}()
-	defer worker.Stop()
+	defer func() {
+		if err := worker.Stop(); err != nil {
+			t.Errorf("Failed to stop worker: %v", err)
+		}
+	}()
 
 	// Give the worker some time to start
 	time.Sleep(2 * time.Second)
@@ -67,7 +71,9 @@ func TestGlobalMiddleware(t *testing.T) {
 	time.Sleep(5 * time.Second) // Adjusted wait time for job processing
 
 	// Stop the worker and check the middleware count
-	worker.Stop()
+	if err := worker.Stop(); err != nil {
+		t.Errorf("Failed to stop worker: %v", err)
+	}
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -116,7 +122,11 @@ func TestScopedMiddleware(t *testing.T) {
 			log.Fatalf("Failed to start worker: %v", err)
 		}
 	}()
-	defer worker.Stop() // Ensure worker is stopped after the test.
+	defer func() {
+		if err := worker.Stop(); err != nil {
+			t.Errorf("Failed to stop worker: %v", err)
+		}
+	}() // Ensure worker is stopped after the test.
 
 	// Allow some time for the worker to initialize.
 	time.Sleep(2 * time.Second)

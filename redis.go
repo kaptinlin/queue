@@ -34,7 +34,7 @@ func (c *RedisConfig) Validate() error {
 		return fmt.Errorf("%w: %q", ErrRedisUnsupportedNetwork, c.Network)
 	}
 	if _, _, err := net.SplitHostPort(c.Addr); err != nil && c.Network == "tcp" {
-		return fmt.Errorf("%w: %v", ErrRedisInvalidAddress, err)
+		return fmt.Errorf("%w: %w", ErrRedisInvalidAddress, err)
 	}
 	if c.TLSConfig == nil && strings.HasPrefix(c.Addr, "rediss://") {
 		return ErrRedisTLSRequired
