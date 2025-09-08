@@ -1,60 +1,51 @@
-name: Go
+name: Go CI
 
 on:
+  workflow_dispatch:
   push:
-    branches:
-      - main
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 jobs:
   test:
-    name: Test
     runs-on: ubuntu-latest
 
     services:
       redis:
-        image: redis
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
         ports:
           - 6379:6379
-        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
 
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.22.x
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache: true
 
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run unit tests
-        run: make test
-        env:
-          REDIS_ADDR: localhost:6379
-
-      - name: Lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: 'latest'
-          args: -h
-
-      - run: make lint
+    - name: Run tests
+      run: cd tests && go test -v
 
   lint:
-    name: Lint
     runs-on: ubuntu-latest
-    needs: test
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v5
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.22.x
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+        cache: true
 
-      - run: make lint
-        name: Lint
+    - name: golangci-lint
+      uses: golangci/golangci-lint-action@v8
+      with:
+        version: latest
