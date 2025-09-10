@@ -1,3 +1,4 @@
+// Package queue provides a simple and flexible job queue implementation for Go applications.
 package queue
 
 import (
@@ -29,6 +30,7 @@ type ClientErrorHandler interface {
 // DefaultClientErrorHandler logs errors encountered during job enqueue operations.
 type DefaultClientErrorHandler struct{}
 
+// HandleError logs errors encountered during job enqueue operations.
 func (h *DefaultClientErrorHandler) HandleError(err error, job *Job) {
 	log.Printf("Error enqueuing job: %v, job: %v\n", err, job)
 }
