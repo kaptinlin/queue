@@ -113,7 +113,6 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 	if retention > 0 {
 		opts = append(opts, asynq.Retention(retention))
 	}
-	// opts = append(opts, asynq.TaskID(job.Fingerprint))
 
 	// Enqueue the task with the prepared options
 	result, err := c.asynqClient.Enqueue(task, opts...)

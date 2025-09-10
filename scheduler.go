@@ -130,7 +130,7 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 }
 
 // RegisterCron schedules a new cron job using the job type, payload, and options.
-func (s *Scheduler) RegisterCron(spec string, jobType string, payload interface{}, opts ...JobOption) (string, error) {
+func (s *Scheduler) RegisterCron(spec, jobType string, payload interface{}, opts ...JobOption) (string, error) {
 	job := NewJob(jobType, payload, opts...)
 	return s.RegisterCronJob(spec, job)
 }
