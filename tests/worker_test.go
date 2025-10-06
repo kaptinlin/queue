@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/kaptinlin/queue"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var ErrIntentionalJobFailure = errors.New("intentional job failure")
@@ -18,9 +20,7 @@ func TestWorkerStartStop(t *testing.T) {
 
 	// Initialize worker with minimal configuration
 	worker, err := queue.NewWorker(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create worker: %v", err)
-	}
+	require.NoError(t, err, "Failed to create worker")
 
 	// Start worker in a goroutine
 	go func() {
@@ -33,18 +33,15 @@ func TestWorkerStartStop(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// Stop worker
-	if err := worker.Stop(); err != nil {
-		t.Errorf("Failed to stop worker: %v", err)
-	}
+	err = worker.Stop()
+	assert.NoError(t, err, "Failed to stop worker")
 }
 
 func TestWorkerRegister(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	worker, err := queue.NewWorker(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create worker: %v", err)
-	}
+	require.NoError(t, err, "Failed to create worker")
 
 	handlerFunc := func(ctx context.Context, job *queue.Job) error {
 		// Handler logic here
@@ -53,18 +50,14 @@ func TestWorkerRegister(t *testing.T) {
 
 	// Register a job handler
 	err = worker.Register("test_job", handlerFunc)
-	if err != nil {
-		t.Fatalf("Failed to register handler: %v", err)
-	}
+	require.NoError(t, err, "Failed to register handler")
 }
 
 func TestWorkerRegisterHandler(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	worker, err := queue.NewWorker(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create worker: %v", err)
-	}
+	require.NoError(t, err, "Failed to create worker")
 
 	handler := queue.NewHandler("test_job", func(ctx context.Context, job *queue.Job) error {
 		// Handler logic
@@ -72,9 +65,7 @@ func TestWorkerRegisterHandler(t *testing.T) {
 	})
 
 	err = worker.RegisterHandler(handler)
-	if err != nil {
-		t.Fatalf("Failed to register handler using RegisterHandler: %v", err)
-	}
+	require.NoError(t, err, "Failed to register handler using RegisterHandler")
 }
 
 func TestWorkerWithWorkerErrorHandler(t *testing.T) {
@@ -83,16 +74,13 @@ func TestWorkerWithWorkerErrorHandler(t *testing.T) {
 	errorHandler := NewCustomWorkerErrorHandler()
 
 	worker, err := queue.NewWorker(redisConfig, queue.WithWorkerErrorHandler(errorHandler))
-	if err != nil {
-		t.Fatalf("Failed to create worker with error handler: %v", err)
-	}
+	require.NoError(t, err, "Failed to create worker with error handler")
 
 	jobType := "failJob"
-	if err := worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
 		return ErrIntentionalJobFailure
-	}); err != nil {
-		t.Fatalf("Failed to register failing job handler: %v", err)
-	}
+	})
+	require.NoError(t, err, "Failed to register failing job handler")
 
 	go func() {
 		if err := worker.Start(); err != nil {
@@ -102,20 +90,17 @@ func TestWorkerWithWorkerErrorHandler(t *testing.T) {
 
 	time.Sleep(2 * time.Second) // Adjusted wait time for startup
 
-	client, _ := queue.NewClient(redisConfig)
-	if _, err := client.Enqueue(jobType, map[string]interface{}{"key": "value"}); err != nil {
-		t.Fatalf("Failed to enqueue job: %v", err)
-	}
+	client, err := queue.NewClient(redisConfig)
+	require.NoError(t, err, "Failed to create client")
+	_, err = client.Enqueue(jobType, map[string]interface{}{"key": "value"})
+	require.NoError(t, err, "Failed to enqueue job")
 
 	time.Sleep(2 * time.Second) // Adjusted wait time for job processing
 
-	if err := worker.Stop(); err != nil {
-		t.Errorf("Failed to stop worker: %v", err)
-	}
+	err = worker.Stop()
+	assert.NoError(t, err, "Failed to stop worker")
 
-	if len(errorHandler.errors) == 0 {
-		t.Errorf("Expected the custom error handler to capture a processing error, but it did not")
-	}
+	assert.NotEmpty(t, errorHandler.errors, "Expected the custom error handler to capture a processing error")
 }
 
 // CustomWorkerErrorHandler implements the queue.WorkerErrorHandler interface.

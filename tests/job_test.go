@@ -2,13 +2,15 @@ package tests
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-json-experiment/json"
 	"github.com/kaptinlin/queue"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewJob(t *testing.T) {
@@ -16,13 +18,8 @@ func TestNewJob(t *testing.T) {
 	payload := map[string]interface{}{"key": "value"}
 	job := queue.NewJob(jobType, payload)
 
-	if job.Type != jobType {
-		t.Errorf("expected job type to be %s, got %s", jobType, job.Type)
-	}
-
-	if !reflect.DeepEqual(job.Payload, payload) {
-		t.Errorf("expected job payload to be %+v, got %+v", payload, job.Payload)
-	}
+	assert.Equal(t, jobType, job.Type, "Job type should match")
+	assert.True(t, reflect.DeepEqual(job.Payload, payload), "Job payload should match")
 }
 
 func TestJob_ConvertToAsynqTask(t *testing.T) {
@@ -31,22 +28,15 @@ func TestJob_ConvertToAsynqTask(t *testing.T) {
 	job := queue.NewJob(jobType, payload)
 
 	task, _, err := job.ConvertToAsynqTask()
-	if err != nil {
-		t.Fatalf("ConvertToAsynqTask failed: %v", err)
-	}
+	require.NoError(t, err, "ConvertToAsynqTask should not fail")
 
-	if task.Type() != jobType {
-		t.Errorf("expected task type to be %s, got %s", jobType, task.Type())
-	}
+	assert.Equal(t, jobType, task.Type(), "Task type should match job type")
 
 	var taskPayload map[string]interface{}
-	if err := json.Unmarshal(task.Payload(), &taskPayload); err != nil {
-		t.Fatalf("json.Unmarshal failed: %v", err)
-	}
+	err = json.Unmarshal(task.Payload(), &taskPayload)
+	require.NoError(t, err, "json.Unmarshal should not fail")
 
-	if !reflect.DeepEqual(taskPayload, payload) {
-		t.Errorf("expected task payload to be %+v, got %+v", payload, taskPayload)
-	}
+	assert.True(t, reflect.DeepEqual(taskPayload, payload), "Task payload should match job payload")
 }
 
 func TestJob_DecodePayload(t *testing.T) {
@@ -55,13 +45,10 @@ func TestJob_DecodePayload(t *testing.T) {
 	job := queue.NewJob(jobType, payload)
 
 	var decodedPayload struct{ Key string }
-	if err := job.DecodePayload(&decodedPayload); err != nil {
-		t.Fatalf("DecodePayload failed: %v", err)
-	}
+	err := job.DecodePayload(&decodedPayload)
+	require.NoError(t, err, "DecodePayload should not fail")
 
-	if decodedPayload.Key != payload.Key {
-		t.Errorf("expected decoded payload key to be %s, got %s", payload.Key, decodedPayload.Key)
-	}
+	assert.Equal(t, payload.Key, decodedPayload.Key, "Decoded payload key should match")
 }
 
 func TestJobOptions(t *testing.T) {
@@ -75,29 +62,12 @@ func TestJobOptions(t *testing.T) {
 		queue.WithDeadline(&now),
 	)
 
-	if job.Options.Delay != 10*time.Second {
-		t.Errorf("expected delay to be 10s, got %v", job.Options.Delay)
-	}
-
-	if job.Options.MaxRetries != 5 {
-		t.Errorf("expected max retries to be 5, got %d", job.Options.MaxRetries)
-	}
-
-	if job.Options.Queue != "customQueue" {
-		t.Errorf("expected queue to be 'customQueue', got '%s'", job.Options.Queue)
-	}
-
-	if !job.Options.ScheduleAt.Equal(now) {
-		t.Errorf("expected schedule at to be %v, got %v", now, job.Options.ScheduleAt)
-	}
-
-	if job.Options.Retention != 24*time.Hour {
-		t.Errorf("expected retention to be 24h, got %v", job.Options.Retention)
-	}
-
-	if !job.Options.Deadline.Equal(now) {
-		t.Errorf("expected deadline to be %v, got %v", now, job.Options.Deadline)
-	}
+	assert.Equal(t, 10*time.Second, job.Options.Delay, "Delay should be 10s")
+	assert.Equal(t, 5, job.Options.MaxRetries, "Max retries should be 5")
+	assert.Equal(t, "customQueue", job.Options.Queue, "Queue should be 'customQueue'")
+	assert.True(t, job.Options.ScheduleAt.Equal(now), "ScheduleAt should match")
+	assert.Equal(t, 24*time.Hour, job.Options.Retention, "Retention should be 24h")
+	assert.True(t, job.Options.Deadline.Equal(now), "Deadline should match")
 }
 
 type TestPayload struct {
@@ -116,18 +86,13 @@ func TestJobPayloadBasicType(t *testing.T) {
 
 	job := queue.NewJob(jobType, payload)
 	_, _, err := job.ConvertToAsynqTask()
-	if err != nil {
-		t.Fatalf("Failed to convert job to task: %v", err)
-	}
+	require.NoError(t, err, "Failed to convert job to task")
 
 	var decodedPayload string
-	if err := job.DecodePayload(&decodedPayload); err != nil {
-		t.Fatalf("Failed to decode payload: %v", err)
-	}
+	err = job.DecodePayload(&decodedPayload)
+	require.NoError(t, err, "Failed to decode payload")
 
-	if decodedPayload != payload {
-		t.Errorf("Expected payload to be %v, got %v", payload, decodedPayload)
-	}
+	assert.Equal(t, payload, decodedPayload, "Decoded payload should match original")
 }
 
 // TestJobPayloadStruct with corrections.
@@ -137,21 +102,16 @@ func TestJobPayloadStruct(t *testing.T) {
 
 	job := queue.NewJob(jobType, payload)
 	task, _, err := job.ConvertToAsynqTask()
-	if err != nil {
-		t.Fatalf("Failed to convert job to task: %v", err)
-	}
+	require.NoError(t, err, "Failed to convert job to task")
 
 	// Assuming task is used later in this function.
 	_ = task
 
 	var decodedPayload TestPayload
-	if err := job.DecodePayload(&decodedPayload); err != nil {
-		t.Fatalf("Failed to decode payload: %v", err)
-	}
+	err = job.DecodePayload(&decodedPayload)
+	require.NoError(t, err, "Failed to decode payload")
 
-	if !reflect.DeepEqual(decodedPayload, payload) {
-		t.Errorf("Expected payload to be %+v, got %+v", payload, decodedPayload)
-	}
+	assert.True(t, reflect.DeepEqual(decodedPayload, payload), "Decoded payload should match original")
 }
 
 // TestJobPayloadNestedStruct with corrections.
@@ -161,41 +121,30 @@ func TestJobPayloadNestedStruct(t *testing.T) {
 
 	job := queue.NewJob(jobType, payload)
 	task, _, err := job.ConvertToAsynqTask()
-	if err != nil {
-		t.Fatalf("Failed to convert job to task: %v", err)
-	}
+	require.NoError(t, err, "Failed to convert job to task")
 
 	// Assuming task is used later in this function.
 	_ = task
 
 	var decodedPayload NestedPayload
-	if err := job.DecodePayload(&decodedPayload); err != nil {
-		t.Fatalf("Failed to decode payload: %v", err)
-	}
+	err = job.DecodePayload(&decodedPayload)
+	require.NoError(t, err, "Failed to decode payload")
 
-	if !reflect.DeepEqual(decodedPayload, payload) {
-		t.Errorf("Expected payload to be %+v, got %+v", payload, decodedPayload)
-	}
+	assert.True(t, reflect.DeepEqual(decodedPayload, payload), "Decoded payload should match original")
 }
 func TestWriteResultAndRetrieve(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	// Initialize the queue client
 	client, err := queue.NewClient(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
+	require.NoError(t, err, "Failed to create client")
 	defer func() {
-		if err := client.Stop(); err != nil {
-			t.Errorf("Failed to stop client: %v", err)
-		}
+		assert.NoError(t, client.Stop(), "Failed to stop client")
 	}()
 
 	// Initialize the worker to process jobs
 	worker, err := queue.NewWorker(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create worker: %v", err)
-	}
+	require.NoError(t, err, "Failed to create worker")
 
 	// Prepare a WaitGroup for job completion synchronization
 	var wg sync.WaitGroup
@@ -222,9 +171,8 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 	}
 
 	// Register the job type and handler with the worker
-	if err := worker.Register(testJobType, testJobHandler); err != nil {
-		t.Fatalf("Failed to register job handler: %v", err)
-	}
+	err = worker.Register(testJobType, testJobHandler)
+	require.NoError(t, err, "Failed to register job handler")
 
 	// Start the worker in a separate goroutine
 	go func() {
@@ -233,18 +181,14 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 		}
 	}()
 	defer func() {
-		if err := worker.Stop(); err != nil {
-			t.Errorf("Failed to stop worker: %v", err)
-		}
+		assert.NoError(t, worker.Stop(), "Failed to stop worker")
 	}()
 
 	// Enqueue the job
 	payload := TestJobPayload{Message: "Test WriteResult"}
 	job := queue.NewJob(testJobType, payload, queue.WithRetention(24*time.Hour))
 	jobID, err := client.EnqueueJob(job)
-	if err != nil {
-		t.Fatalf("Failed to enqueue job: %v", err)
-	}
+	require.NoError(t, err, "Failed to enqueue job")
 
 	// Wait for job processing to complete
 	wg.Wait()
@@ -255,18 +199,14 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 	// Initialize manager to retrieve job information
 	manager := setupTestManager()
 	jobInfo, err := manager.GetJobInfo(queue.DefaultQueue, jobID)
-	if err != nil {
-		t.Fatalf("Failed to get job info: %v", err)
-	}
+	require.NoError(t, err, "Failed to get job info")
 
 	// Deserialize the job result to verify it
 	var result map[string]interface{}
-	if err := json.Unmarshal([]byte(*jobInfo.Result), &result); err != nil {
-		t.Fatalf("Failed to unmarshal job result: %v", err)
-	}
+	err = json.Unmarshal([]byte(*jobInfo.Result), &result)
+	require.NoError(t, err, "Failed to unmarshal job result")
 
 	// Assert that the result matches the expected result
-	if result["status"] != expectedResult["status"] || result["detail"] != expectedResult["detail"] {
-		t.Errorf("Job result did not match expected result. Got %v, want %v", result, expectedResult)
-	}
+	assert.Equal(t, expectedResult["status"], result["status"], "Job result status should match")
+	assert.Equal(t, expectedResult["detail"], result["detail"], "Job result detail should match")
 }

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/kaptinlin/queue"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestGroupMiddleware ensures that group-specific middleware is correctly applied to jobs processed by handlers within the group.
@@ -31,9 +33,7 @@ func TestGroupMiddleware(t *testing.T) {
 	}
 
 	worker, err := queue.NewWorker(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create worker: %v", err)
-	}
+	require.NoError(t, err, "Failed to create worker")
 
 	// Create a group and apply the group-specific middleware
 	emailGroup := worker.Group("email")
@@ -41,11 +41,10 @@ func TestGroupMiddleware(t *testing.T) {
 
 	// Register a dummy job handler within the group
 	jobType := "sendEmail"
-	if err := emailGroup.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = emailGroup.Register(jobType, func(ctx context.Context, job *queue.Job) error {
 		return nil // Simulate successful job processing
-	}); err != nil {
-		t.Fatalf("Failed to register job handler: %v", err)
-	}
+	})
+	require.NoError(t, err, "Failed to register job handler")
 
 	// Start the worker in a goroutine to process jobs.
 	go func() {
@@ -54,20 +53,18 @@ func TestGroupMiddleware(t *testing.T) {
 		}
 	}()
 	defer func() {
-		if err := worker.Stop(); err != nil {
-			t.Errorf("Failed to stop worker: %v", err)
-		}
+		assert.NoError(t, worker.Stop(), "Failed to stop worker")
 	}() // Ensure worker is stopped after the test.
 
 	// Allow some time for the worker to initialize.
 	time.Sleep(2 * time.Second)
 
 	// Enqueue jobs to be processed by the handler within the email group.
-	client, _ := queue.NewClient(redisConfig)
+	client, err := queue.NewClient(redisConfig)
+	require.NoError(t, err, "Failed to create client")
 	for i := 0; i < 5; i++ {
-		if _, err := client.Enqueue(jobType, map[string]interface{}{"key": "value"}); err != nil {
-			t.Fatalf("Failed to enqueue job: %v", err)
-		}
+		_, err := client.Enqueue(jobType, map[string]interface{}{"key": "value"})
+		require.NoError(t, err, "Failed to enqueue job")
 	}
 
 	// Wait a bit for jobs to be processed.
@@ -76,7 +73,5 @@ func TestGroupMiddleware(t *testing.T) {
 	// Verify that the group-specific middleware processed the expected number of jobs.
 	mu.Lock()
 	defer mu.Unlock()
-	if processedJobs < 5 {
-		t.Errorf("Expected at least 5 processed jobs by group middleware, got %d", processedJobs)
-	}
+	assert.GreaterOrEqual(t, processedJobs, 5, "Expected at least 5 processed jobs by group middleware")
 }

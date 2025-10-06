@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/kaptinlin/queue"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // Define a test-specific job type and payload.
@@ -21,27 +23,20 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 
 	// Initialize the client to interact with the queue.
 	client, err := queue.NewClient(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
+	require.NoError(t, err, "Failed to create client")
 	defer func() {
-		if err := client.Stop(); err != nil {
-			t.Errorf("Failed to stop client: %v", err)
-		}
+		assert.NoError(t, client.Stop(), "Failed to stop client")
 	}()
 
 	// Define the job payload and enqueue a new job.
 	payload := TestJobPayload{Message: "Hello, Test Queue!"}
 	job := queue.NewJob(testJobType, payload)
-	if _, err = client.EnqueueJob(job); err != nil {
-		t.Fatalf("Failed to enqueue job: %v", err)
-	}
+	_, err = client.EnqueueJob(job)
+	require.NoError(t, err, "Failed to enqueue job")
 
 	// Initialize the worker responsible for processing jobs.
 	worker, err := queue.NewWorker(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create worker: %v", err)
-	}
+	require.NoError(t, err, "Failed to create worker")
 
 	// Use a WaitGroup to wait for the handler execution.
 	var wg sync.WaitGroup
@@ -63,9 +58,8 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 	}
 
 	// Register the job type and its handler with the worker.
-	if err := worker.Register(testJobType, testJobHandler); err != nil {
-		t.Fatalf("Failed to register job handler: %v", err)
-	}
+	err = worker.Register(testJobType, testJobHandler)
+	require.NoError(t, err, "Failed to register job handler")
 
 	// Start the worker in a separate goroutine to process jobs.
 	go func() {
@@ -74,9 +68,7 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 		}
 	}()
 	defer func() {
-		if err := worker.Stop(); err != nil {
-			t.Errorf("Failed to stop worker: %v", err)
-		}
+		assert.NoError(t, worker.Stop(), "Failed to stop worker")
 	}() // Ensure the worker is stopped after the test.
 
 	// Wait for the job handler to execute.

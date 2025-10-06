@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/kaptinlin/queue"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSchedulerInitialization(t *testing.T) {
@@ -12,21 +14,14 @@ func TestSchedulerInitialization(t *testing.T) {
 
 	// Initialize a Scheduler instance with default settings.
 	scheduler, err := queue.NewScheduler(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create scheduler: %v", err)
-	}
-
-	if scheduler == nil {
-		t.Fatal("Expected a valid Scheduler instance, got nil")
-	}
+	require.NoError(t, err, "Failed to create scheduler")
+	assert.NotNil(t, scheduler, "Expected a valid Scheduler instance")
 }
 
 func TestSchedulerStartAndStop(t *testing.T) {
 	redisConfig := getRedisConfig()
 	scheduler, err := queue.NewScheduler(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create scheduler: %v", err)
-	}
+	require.NoError(t, err, "Failed to create scheduler")
 
 	go func() {
 		if err := scheduler.Start(); err != nil {
@@ -36,24 +31,22 @@ func TestSchedulerStartAndStop(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	if err := scheduler.Stop(); err != nil {
-		t.Fatalf("Failed to stop scheduler: %v", err)
-	}
+	err = scheduler.Stop()
+	require.NoError(t, err, "Failed to stop scheduler")
 }
 
 func TestSchedulerRegisterWithInvalidCronSpec(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	// Initialize a Scheduler
-	scheduler, _ := queue.NewScheduler(redisConfig)
+	scheduler, err := queue.NewScheduler(redisConfig)
+	require.NoError(t, err, "Failed to create scheduler")
 
 	// Register a job with an invalid cron expression to trigger the error handler.
-	_, err := scheduler.RegisterCron("wrong cron", "error_job", nil)
+	_, err = scheduler.RegisterCron("wrong cron", "error_job", nil)
 
 	// Verify the error was triggered.
-	if err == nil {
-		t.Fatal("Expected an error when registering a job with an invalid cron expression, but got nil")
-	}
+	assert.Error(t, err, "Expected an error when registering a job with an invalid cron expression")
 }
 
 func TestSchedulerPreEnqueueHook(t *testing.T) {
@@ -66,17 +59,13 @@ func TestSchedulerPreEnqueueHook(t *testing.T) {
 	}
 
 	scheduler, err := queue.NewScheduler(redisConfig, queue.WithPreEnqueueFunc(preEnqueueHook))
-	if err != nil {
-		t.Fatalf("Failed to create scheduler with pre enqueue hook: %v", err)
-	}
+	require.NoError(t, err, "Failed to create scheduler with pre enqueue hook")
 
 	jobType := "pre_enqueue_test"
 	payload := map[string]interface{}{"data": "pre"}
 
 	_, err = scheduler.RegisterCron("@every 1s", jobType, payload)
-	if err != nil {
-		t.Fatalf("Failed to register cron job: %v", err)
-	}
+	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
 		if err := scheduler.Start(); err != nil {
@@ -84,16 +73,12 @@ func TestSchedulerPreEnqueueHook(t *testing.T) {
 		}
 	}()
 	defer func() {
-		if err := scheduler.Stop(); err != nil {
-			t.Errorf("Failed to stop scheduler: %v", err)
-		}
+		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
 	}()
 
 	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
 
-	if !preEnqueueCalled {
-		t.Error("Expected PreEnqueueFunc to be called, but it was not")
-	}
+	assert.True(t, preEnqueueCalled, "Expected PreEnqueueFunc to be called")
 }
 
 func TestSchedulerPostEnqueueHook(t *testing.T) {
@@ -106,17 +91,13 @@ func TestSchedulerPostEnqueueHook(t *testing.T) {
 	}
 
 	scheduler, err := queue.NewScheduler(redisConfig, queue.WithPostEnqueueFunc(postEnqueueHook))
-	if err != nil {
-		t.Fatalf("Failed to create scheduler with post enqueue hook: %v", err)
-	}
+	require.NoError(t, err, "Failed to create scheduler with post enqueue hook")
 
 	jobType := "post_enqueue_test"
 	payload := map[string]interface{}{"data": "post"}
 
 	_, err = scheduler.RegisterCron("@every 1s", jobType, payload)
-	if err != nil {
-		t.Fatalf("Failed to register cron job: %v", err)
-	}
+	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
 		if err := scheduler.Start(); err != nil {
@@ -124,14 +105,10 @@ func TestSchedulerPostEnqueueHook(t *testing.T) {
 		}
 	}()
 	defer func() {
-		if err := scheduler.Stop(); err != nil {
-			t.Errorf("Failed to stop scheduler: %v", err)
-		}
+		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
 	}()
 
 	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
 
-	if !postEnqueueCalled {
-		t.Error("Expected PostEnqueueFunc to be called, but it was not")
-	}
+	assert.True(t, postEnqueueCalled, "Expected PostEnqueueFunc to be called")
 }

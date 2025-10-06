@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/kaptinlin/queue"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRedisConfigValidate(t *testing.T) {
@@ -59,8 +60,10 @@ func TestRedisConfigValidate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := tt.config.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			if tt.wantErr {
+				assert.Error(t, err, "Validate() should return error")
+			} else {
+				assert.NoError(t, err, "Validate() should not return error")
 			}
 		})
 	}
@@ -75,72 +78,56 @@ func TestRedisConfigOptions(t *testing.T) {
 			name:   "WithRedisAddress",
 			option: queue.WithRedisAddress("127.0.0.1:6379"),
 			validate: func(t *testing.T, config *queue.RedisConfig) {
-				if config.Addr != "127.0.0.1:6379" {
-					t.Errorf("WithRedisAddress() Addr = %v, want %v", config.Addr, "127.0.0.1:6379")
-				}
+				assert.Equal(t, "127.0.0.1:6379", config.Addr, "WithRedisAddress() should set correct address")
 			},
 		},
 		{
 			name:   "WithRedisPassword",
 			option: queue.WithRedisPassword("secret"),
 			validate: func(t *testing.T, config *queue.RedisConfig) {
-				if config.Password != "secret" {
-					t.Errorf("WithRedisPassword() Password = %v, want %v", config.Password, "secret")
-				}
+				assert.Equal(t, "secret", config.Password, "WithRedisPassword() should set correct password")
 			},
 		},
 		{
 			name:   "WithRedisDB",
 			option: queue.WithRedisDB(1),
 			validate: func(t *testing.T, config *queue.RedisConfig) {
-				if config.DB != 1 {
-					t.Errorf("WithRedisDB() DB = %v, want %v", config.DB, 1)
-				}
+				assert.Equal(t, 1, config.DB, "WithRedisDB() should set correct DB")
 			},
 		},
 		{
 			name:   "WithRedisTLSConfig",
 			option: queue.WithRedisTLSConfig(&tls.Config{}),
 			validate: func(t *testing.T, config *queue.RedisConfig) {
-				if config.TLSConfig == nil {
-					t.Errorf("WithRedisTLSConfig() TLSConfig = %v, want %v", config.TLSConfig, "&tls.Config{}")
-				}
+				assert.NotNil(t, config.TLSConfig, "WithRedisTLSConfig() should set TLS config")
 			},
 		},
 		{
 			name:   "WithRedisDialTimeout",
 			option: queue.WithRedisDialTimeout(10 * time.Second),
 			validate: func(t *testing.T, config *queue.RedisConfig) {
-				if config.DialTimeout != 10*time.Second {
-					t.Errorf("WithRedisDialTimeout() DialTimeout = %v, want %v", config.DialTimeout, 10*time.Second)
-				}
+				assert.Equal(t, 10*time.Second, config.DialTimeout, "WithRedisDialTimeout() should set correct timeout")
 			},
 		},
 		{
 			name:   "WithRedisReadTimeout",
 			option: queue.WithRedisReadTimeout(10 * time.Second),
 			validate: func(t *testing.T, config *queue.RedisConfig) {
-				if config.ReadTimeout != 10*time.Second {
-					t.Errorf("WithRedisReadTimeout() ReadTimeout = %v, want %v", config.ReadTimeout, 10*time.Second)
-				}
+				assert.Equal(t, 10*time.Second, config.ReadTimeout, "WithRedisReadTimeout() should set correct timeout")
 			},
 		},
 		{
 			name:   "WithRedisWriteTimeout",
 			option: queue.WithRedisWriteTimeout(10 * time.Second),
 			validate: func(t *testing.T, config *queue.RedisConfig) {
-				if config.WriteTimeout != 10*time.Second {
-					t.Errorf("WithRedisWriteTimeout() WriteTimeout = %v, want %v", config.WriteTimeout, 10*time.Second)
-				}
+				assert.Equal(t, 10*time.Second, config.WriteTimeout, "WithRedisWriteTimeout() should set correct timeout")
 			},
 		},
 		{
 			name:   "WithRedisPoolSize",
 			option: queue.WithRedisPoolSize(20),
 			validate: func(t *testing.T, config *queue.RedisConfig) {
-				if config.PoolSize != 20 {
-					t.Errorf("WithRedisPoolSize() PoolSize = %v, want %v", config.PoolSize, 20)
-				}
+				assert.Equal(t, 20, config.PoolSize, "WithRedisPoolSize() should set correct pool size")
 			},
 		},
 	}

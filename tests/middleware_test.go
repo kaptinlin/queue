@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/kaptinlin/queue"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestGlobalMiddleware ensures global middleware is applied to all jobs processed by the worker.
@@ -31,18 +33,15 @@ func TestGlobalMiddleware(t *testing.T) {
 	}
 
 	worker, err := queue.NewWorker(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create worker: %v", err)
-	}
+	require.NoError(t, err, "Failed to create worker")
 	worker.Use(globalMiddleware) // Apply the global middleware
 
 	// Register a dummy job handler
 	jobType := "dummyJob"
-	if err := worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
 		return nil // Simulate successful job processing
-	}); err != nil {
-		t.Fatalf("Failed to register dummy job handler: %v", err)
-	}
+	})
+	require.NoError(t, err, "Failed to register dummy job handler")
 
 	// Start the worker in a goroutine
 	go func() {
@@ -51,35 +50,29 @@ func TestGlobalMiddleware(t *testing.T) {
 		}
 	}()
 	defer func() {
-		if err := worker.Stop(); err != nil {
-			t.Errorf("Failed to stop worker: %v", err)
-		}
+		assert.NoError(t, worker.Stop(), "Failed to stop worker")
 	}()
 
 	// Give the worker some time to start
 	time.Sleep(2 * time.Second)
 
 	// Enqueue a couple of jobs
-	client, _ := queue.NewClient(redisConfig)
+	client, err := queue.NewClient(redisConfig)
+	require.NoError(t, err, "Failed to create client")
 	for i := 0; i < 5; i++ {
-		if _, err := client.Enqueue(jobType, map[string]interface{}{"key": "value"}); err != nil {
-			t.Fatalf("Failed to enqueue job: %v", err)
-		}
+		_, err := client.Enqueue(jobType, map[string]interface{}{"key": "value"})
+		require.NoError(t, err, "Failed to enqueue job")
 	}
 
 	// Wait a bit for jobs to be processed
 	time.Sleep(5 * time.Second) // Adjusted wait time for job processing
 
 	// Stop the worker and check the middleware count
-	if err := worker.Stop(); err != nil {
-		t.Errorf("Failed to stop worker: %v", err)
-	}
+	assert.NoError(t, worker.Stop(), "Failed to stop worker")
 
 	mu.Lock()
 	defer mu.Unlock()
-	if processedJobs < 5 {
-		t.Errorf("Expected at least 5 processed jobs, got %d", processedJobs)
-	}
+	assert.GreaterOrEqual(t, processedJobs, 5, "Expected at least 5 processed jobs")
 }
 
 // TestScopedMiddleware ensures that scoped middleware is correctly applied to specific job handlers.
@@ -103,18 +96,15 @@ func TestScopedMiddleware(t *testing.T) {
 	}
 
 	worker, err := queue.NewWorker(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create worker: %v", err)
-	}
+	require.NoError(t, err, "Failed to create worker")
 
 	// Register a dummy job handler with scoped middleware
 	jobType := "scopedJob"
 	handlerFunc := func(ctx context.Context, job *queue.Job) error {
 		return nil // Simulate successful job processing
 	}
-	if err := worker.Register(jobType, handlerFunc, queue.WithMiddleware(scopedMiddleware)); err != nil {
-		t.Fatalf("Failed to register dummy job handler with scoped middleware: %v", err)
-	}
+	err = worker.Register(jobType, handlerFunc, queue.WithMiddleware(scopedMiddleware))
+	require.NoError(t, err, "Failed to register dummy job handler with scoped middleware")
 
 	// Start the worker in a goroutine to process jobs.
 	go func() {
@@ -123,20 +113,18 @@ func TestScopedMiddleware(t *testing.T) {
 		}
 	}()
 	defer func() {
-		if err := worker.Stop(); err != nil {
-			t.Errorf("Failed to stop worker: %v", err)
-		}
+		assert.NoError(t, worker.Stop(), "Failed to stop worker")
 	}() // Ensure worker is stopped after the test.
 
 	// Allow some time for the worker to initialize.
 	time.Sleep(2 * time.Second)
 
 	// Enqueue jobs to be processed by the scoped middleware-enhanced handler.
-	client, _ := queue.NewClient(redisConfig)
+	client, err := queue.NewClient(redisConfig)
+	require.NoError(t, err, "Failed to create client")
 	for i := 0; i < 3; i++ {
-		if _, err := client.Enqueue(jobType, map[string]interface{}{"key": "value"}); err != nil {
-			t.Fatalf("Failed to enqueue job: %v", err)
-		}
+		_, err := client.Enqueue(jobType, map[string]interface{}{"key": "value"})
+		require.NoError(t, err, "Failed to enqueue job")
 	}
 
 	// Wait a bit for jobs to be processed.
@@ -145,7 +133,5 @@ func TestScopedMiddleware(t *testing.T) {
 	// Verify that the scoped middleware processed the expected number of jobs.
 	mu.Lock()
 	defer mu.Unlock()
-	if processedJobs < 3 {
-		t.Errorf("Expected at least 3 scoped processed jobs, got %d", processedJobs)
-	}
+	assert.GreaterOrEqual(t, processedJobs, 3, "Expected at least 3 scoped processed jobs")
 }

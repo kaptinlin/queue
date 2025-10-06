@@ -6,6 +6,8 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/kaptinlin/queue"
 	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // TestManagerListWorkers tests the ListWorkers method of the Manager.
@@ -13,10 +15,7 @@ func TestManagerListWorkers(t *testing.T) {
 	manager := setupTestManager()
 
 	workers, err := manager.ListWorkers()
-	if err != nil {
-		t.Errorf("Error listing workers: %v", err)
-		return
-	}
+	require.NoError(t, err, "Error listing workers")
 	t.Logf("Found %d workers", len(workers))
 }
 
@@ -25,10 +24,7 @@ func TestManagerListQueues(t *testing.T) {
 	manager := setupTestManager()
 
 	queues, err := manager.ListQueues()
-	if err != nil {
-		t.Errorf("Error listing queues: %v", err)
-		return
-	}
+	require.NoError(t, err, "Error listing queues")
 	t.Logf("Found %d queues", len(queues))
 }
 
@@ -38,10 +34,8 @@ func TestManagerGetQueueInfo(t *testing.T) {
 
 	queueName := queue.DefaultQueue
 	queueInfo, err := manager.GetQueueInfo(queueName)
-	if err != nil {
-		t.Errorf("Error getting queue info for '%s': %v", queueName, err)
-		return
-	}
+	require.NoError(t, err, "Error getting queue info")
+	assert.NotNil(t, queueInfo, "Queue info should not be nil")
 	t.Logf("Queue '%s' info: %+v", queueName, queueInfo)
 }
 
@@ -52,10 +46,7 @@ func TestManagerListJobsByState(t *testing.T) {
 	queueName := queue.DefaultQueue
 	state := queue.StatePending // Example state
 	jobs, err := manager.ListJobsByState(queueName, state, 10, 1)
-	if err != nil {
-		t.Errorf("Error listing jobs by state '%v' in queue '%s': %v", state, queueName, err)
-		return
-	}
+	require.NoError(t, err, "Error listing jobs by state")
 	t.Logf("Found %d jobs in state '%v' in queue '%s'", len(jobs), state, queueName)
 }
 

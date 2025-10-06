@@ -7,38 +7,32 @@ import (
 	"time"
 
 	"github.com/kaptinlin/queue"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 )
 
 func TestNewHandler(t *testing.T) {
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error { return nil })
-	if handler.JobType != "test" {
-		t.Errorf("NewHandler() JobType = %v, want %v", handler.JobType, "test")
-	}
+	assert.Equal(t, "test", handler.JobType, "NewHandler() JobType should match")
 }
 
 func TestHandlerWithRateLimiter(t *testing.T) {
 	limiter := rate.NewLimiter(1, 1)
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error { return nil }, queue.WithRateLimiter(limiter))
-	if handler.Limiter != limiter {
-		t.Errorf("WithRateLimiter() did not set the expected limiter")
-	}
+	assert.Equal(t, limiter, handler.Limiter, "WithRateLimiter() should set the expected limiter")
 }
 
 func TestHandlerWithJobTimeout(t *testing.T) {
 	timeout := 5 * time.Second
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error { return nil }, queue.WithJobTimeout(timeout))
-	if handler.JobTimeout != timeout {
-		t.Errorf("WithJobTimeout() = %v, want %v", handler.JobTimeout, timeout)
-	}
+	assert.Equal(t, timeout, handler.JobTimeout, "WithJobTimeout() should set the expected timeout")
 }
 
 func TestHandlerWithJobQueue(t *testing.T) {
 	queueName := "customQueue"
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error { return nil }, queue.WithJobQueue(queueName))
-	if handler.JobQueue != queueName {
-		t.Errorf("WithJobQueue() = %v, want %v", handler.JobQueue, queueName)
-	}
+	assert.Equal(t, queueName, handler.JobQueue, "WithJobQueue() should set the expected queue name")
 }
 
 func TestHandlerWithRetryDelayFunc(t *testing.T) {
@@ -49,9 +43,7 @@ func TestHandlerWithRetryDelayFunc(t *testing.T) {
 	}
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error { return nil }, queue.WithRetryDelayFunc(customFunc))
 	handler.RetryDelayFunc(0, nil)
-	if !customFuncCalled {
-		t.Errorf("WithRetryDelayFunc() did not set the expected function")
-	}
+	assert.True(t, customFuncCalled, "WithRetryDelayFunc() should set the expected function")
 }
 
 func TestHandlerProcessHandleExecuted(t *testing.T) {
@@ -62,12 +54,9 @@ func TestHandlerProcessHandleExecuted(t *testing.T) {
 	})
 
 	job := &queue.Job{Type: "test", Payload: "data"}
-	if err := handler.Process(context.Background(), job); err != nil {
-		t.Errorf("Process() unexpected error: %v", err)
-	}
-	if !handleExecuted {
-		t.Errorf("Process() did not execute handle function")
-	}
+	err := handler.Process(context.Background(), job)
+	require.NoError(t, err, "Process() should not return error")
+	assert.True(t, handleExecuted, "Process() should execute handle function")
 }
 
 func TestHandlerProcessWithTimeout(t *testing.T) {
@@ -78,9 +67,8 @@ func TestHandlerProcessWithTimeout(t *testing.T) {
 
 	job := &queue.Job{Type: "test", Payload: "data"}
 	err := handler.Process(context.Background(), job)
-	if err == nil || err.Error() != "job processing exceeded timeout: context deadline exceeded" {
-		t.Errorf("Process() expected timeout error, got: %v", err)
-	}
+	assert.Error(t, err, "Process() should return timeout error")
+	assert.Equal(t, "job processing exceeded timeout: context deadline exceeded", err.Error(), "Error message should match expected timeout message")
 }
 
 func TestHandlerProcessWithRateLimiter(t *testing.T) {
@@ -91,14 +79,11 @@ func TestHandlerProcessWithRateLimiter(t *testing.T) {
 
 	// The first call should pass due to the rate limiter allowance
 	job := &queue.Job{Type: "test", Payload: "data"}
-	if err := handler.Process(context.Background(), job); err != nil {
-		t.Errorf("Process() unexpected error: %v", err)
-	}
+	err := handler.Process(context.Background(), job)
+	require.NoError(t, err, "Process() should not return error for first call")
 
 	// The second call should be limited
-	err := handler.Process(context.Background(), job)
+	err = handler.Process(context.Background(), job)
 	var rateLimitError *queue.ErrRateLimit
-	if !errors.As(err, &rateLimitError) {
-		t.Errorf("Process() expected ErrRateLimit error, got: %v", err)
-	}
+	assert.True(t, errors.As(err, &rateLimitError), "Process() should return ErrRateLimit error")
 }

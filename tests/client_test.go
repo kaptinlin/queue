@@ -6,41 +6,33 @@ import (
 	"time"
 
 	"github.com/kaptinlin/queue"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClientEnqueue(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	client, err := queue.NewClient(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
+	require.NoError(t, err, "Failed to create client")
 	defer func() {
-		if err := client.Stop(); err != nil {
-			t.Errorf("Failed to stop client: %v", err)
-		}
+		assert.NoError(t, client.Stop(), "Failed to stop client")
 	}()
 
 	jobType := "testEnqueueJob"
 	payload := map[string]interface{}{"key": "value"}
 
 	_, err = client.Enqueue(jobType, payload)
-	if err != nil {
-		t.Fatalf("Enqueue failed: %v", err)
-	}
+	require.NoError(t, err, "Enqueue failed")
 }
 
 func TestClientEnqueueJob(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	client, err := queue.NewClient(redisConfig)
-	if err != nil {
-		t.Fatalf("Failed to create client: %v", err)
-	}
+	require.NoError(t, err, "Failed to create client")
 	defer func() {
-		if err := client.Stop(); err != nil {
-			t.Errorf("Failed to stop client: %v", err)
-		}
+		assert.NoError(t, client.Stop(), "Failed to stop client")
 	}()
 
 	jobType := "testEnqueueJobJob"
@@ -48,9 +40,7 @@ func TestClientEnqueueJob(t *testing.T) {
 	job := queue.NewJob(jobType, payload)
 
 	_, err = client.EnqueueJob(job)
-	if err != nil {
-		t.Fatalf("EnqueueJob failed: %v", err)
-	}
+	require.NoError(t, err, "EnqueueJob failed")
 }
 
 func TestClientWithClientRetention(t *testing.T) {
@@ -60,13 +50,9 @@ func TestClientWithClientRetention(t *testing.T) {
 	client, err := queue.NewClient(redisConfig,
 		queue.WithClientRetention(retentionPeriod),
 	)
-	if err != nil {
-		t.Fatalf("Failed to create client with retention: %v", err)
-	}
+	require.NoError(t, err, "Failed to create client with retention")
 	defer func() {
-		if err := client.Stop(); err != nil {
-			t.Errorf("Failed to stop client: %v", err)
-		}
+		assert.NoError(t, client.Stop(), "Failed to stop client")
 	}()
 }
 
@@ -77,9 +63,7 @@ func TestClientWithClientErrorHandler(t *testing.T) {
 
 	// Initialize the client with the custom error handler
 	client, err := queue.NewClient(redisConfig, queue.WithClientErrorHandler(handler))
-	if err != nil {
-		t.Fatalf("Failed to create client with custom error handler: %v", err)
-	}
+	require.NoError(t, err, "Failed to create client with custom error handler")
 
 	// Create a job with an invalid configuration that is known to cause ConvertToAsynqTask to return an error
 	jobType := "" // Intentionally left blank to trigger an error in ConvertToAsynqTask
@@ -87,19 +71,13 @@ func TestClientWithClientErrorHandler(t *testing.T) {
 
 	// Attempt to enqueue the job, which should fail at the job conversion step
 	_, err = client.Enqueue(jobType, payload)
-	if err == nil {
-		t.Errorf("Expected an error from enqueueing a job with invalid configuration, but got nil")
-	}
+	assert.Error(t, err, "Expected an error from enqueueing a job with invalid configuration")
 
 	// Check if the custom error handler was invoked with the conversion error
-	if len(handler.errors) == 0 {
-		t.Errorf("Expected the custom error handler to be invoked with a conversion error, but it was not")
-	}
+	assert.NotEmpty(t, handler.errors, "Expected the custom error handler to be invoked with a conversion error")
 
 	// Clean up resources
-	if err := client.Stop(); err != nil {
-		t.Errorf("Failed to stop client: %v", err)
-	}
+	assert.NoError(t, client.Stop(), "Failed to stop client")
 }
 
 // CustomClientErrorHandler implements the queue.ClientErrorHandler interface.
