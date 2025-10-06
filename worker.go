@@ -2,20 +2,23 @@ package queue
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/go-json-experiment/json"
 	"github.com/hibiken/asynq"
 	"golang.org/x/time/rate"
 )
 
-const DefaultQueue = "default"
+const (
+	DefaultQueue                = "default"
+	DefaultRateLimitRetryAfter  = 10 * time.Second
+	DefaultHandlerChannelBuffer = 1
+)
 
 // DefaultQueues defines default queue names and their priorities.
 var DefaultQueues = map[string]int{DefaultQueue: 1}
@@ -31,18 +34,12 @@ type Worker struct {
 	errorHandler WorkerErrorHandler
 	limiter      *rate.Limiter
 	middlewares  []MiddlewareFunc
+	logger       Logger
 }
 
 // WorkerErrorHandler defines an interface for handling errors that occur during job processing.
 type WorkerErrorHandler interface {
 	HandleError(err error, job *Job)
-}
-
-// DefaultWorkerErrorHandler is a default implementation of WorkerErrorHandler that logs errors.
-type DefaultWorkerErrorHandler struct{}
-
-func (h *DefaultWorkerErrorHandler) HandleError(err error, job *Job) {
-	log.Printf("Error processing job: %v, job: %v\n", err, job)
 }
 
 // WorkerConfig holds configuration parameters for a worker, including concurrency, queue priorities, and error handling.
@@ -80,8 +77,9 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 
 	// Apply default configuration and options.
 	config := &WorkerConfig{
-		Concurrency:  runtime.NumCPU(),
-		ErrorHandler: &DefaultWorkerErrorHandler{},
+		Concurrency: max(1, runtime.NumCPU()),
+		Logger:      NewDefaultLogger(), // Default logger
+		// ErrorHandler is nil by default - no default error handler
 	}
 	for _, opt := range opts {
 		opt(config)
@@ -101,8 +99,9 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 	worker := &Worker{
 		groups:       make(map[string]*Group),
 		handlers:     make(map[string]*Handler),
-		errorHandler: config.ErrorHandler,
+		errorHandler: config.ErrorHandler, // May be nil
 		limiter:      config.Limiter,
+		logger:       config.Logger,
 	}
 	worker.setupAsynqServer(redisConfig, config)
 
@@ -217,7 +216,7 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 	return func(ctx context.Context, task *asynq.Task) error {
 		if w.limiter != nil && !w.limiter.Allow() {
 			// Global rate limit exceeded
-			return &ErrRateLimit{RetryAfter: 10 * time.Second}
+			return &ErrRateLimit{RetryAfter: DefaultRateLimitRetryAfter}
 		}
 
 		// Extract payload from the task
@@ -245,7 +244,15 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 
 		// Process the job with the reconstructed Job object
 		if err := finalHandler(ctx, job); err != nil {
-			w.errorHandler.HandleError(err, job)
+			// Always log
+			w.logger.Error(fmt.Sprintf("failed to process job: %v, job_id=%s, job_type=%s, queue=%s",
+				err, job.ID, job.Type, job.Options.Queue))
+
+			// Optional: call custom error handler if provided
+			if w.errorHandler != nil {
+				w.errorHandler.HandleError(err, job)
+			}
+
 			return err
 		}
 
@@ -273,6 +280,13 @@ func (w *Worker) isFailure(err error) bool {
 }
 
 // WorkerOption implementations for configuring various aspects of the Worker.
+
+// WithWorkerLogger sets a custom logger for the worker.
+func WithWorkerLogger(logger Logger) WorkerOption {
+	return func(c *WorkerConfig) {
+		c.Logger = logger
+	}
+}
 
 // WithWorkerStopTimeout configures the stop timeout for the worker.
 func WithWorkerStopTimeout(timeout time.Duration) WorkerOption {
@@ -318,12 +332,5 @@ func WithWorkerQueues(queues map[string]int) WorkerOption {
 func WithWorkerErrorHandler(handler WorkerErrorHandler) WorkerOption {
 	return func(c *WorkerConfig) {
 		c.ErrorHandler = handler
-	}
-}
-
-// WithWorkerLogger configures a custom logger for the worker.
-func WithWorkerLogger(logger Logger) WorkerOption {
-	return func(c *WorkerConfig) {
-		c.Logger = logger
 	}
 }

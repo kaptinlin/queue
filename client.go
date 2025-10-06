@@ -3,7 +3,6 @@ package queue
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -14,25 +13,19 @@ type Client struct {
 	asynqClient  *asynq.Client
 	errorHandler ClientErrorHandler
 	retention    time.Duration
+	logger       Logger
 }
 
 // ClientConfig defines the configuration options for the Client.
 type ClientConfig struct {
 	ErrorHandler ClientErrorHandler // Custom handler for enqueue errors.
 	Retention    time.Duration      // Default retention duration for jobs.
+	Logger       Logger             // Logger instance for logging.
 }
 
 // ClientErrorHandler provides an interface for handling enqueue errors.
 type ClientErrorHandler interface {
 	HandleError(err error, job *Job)
-}
-
-// DefaultClientErrorHandler logs errors encountered during job enqueue operations.
-type DefaultClientErrorHandler struct{}
-
-// HandleError logs errors encountered during job enqueue operations.
-func (h *DefaultClientErrorHandler) HandleError(err error, job *Job) {
-	log.Printf("Error enqueuing job: %v, job: %v\n", err, job)
 }
 
 // NewClient initializes a new Client with specified Redis configuration and client options.
@@ -58,8 +51,9 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 	})
 
 	config := &ClientConfig{
-		ErrorHandler: &DefaultClientErrorHandler{}, // Default error handler.
-		Retention:    0,                            // No retention by default.
+		Logger:    NewDefaultLogger(), // Default to slog-based logger.
+		Retention: 0,                  // No retention by default.
+		// ErrorHandler is nil by default - no default error handler
 	}
 
 	// Apply client options to configure the instance.
@@ -69,13 +63,21 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 
 	return &Client{
 		asynqClient:  asynqClient,
-		errorHandler: config.ErrorHandler,
+		errorHandler: config.ErrorHandler, // May be nil
 		retention:    config.Retention,
+		logger:       config.Logger,
 	}, nil
 }
 
 // ClientOption defines a function signature for configuring the Client.
 type ClientOption func(*ClientConfig)
+
+// WithClientLogger sets a custom logger for the client.
+func WithClientLogger(logger Logger) ClientOption {
+	return func(c *ClientConfig) {
+		c.Logger = logger
+	}
+}
 
 // WithClientErrorHandler sets a custom error handler for the client.
 func WithClientErrorHandler(handler ClientErrorHandler) ClientOption {
@@ -92,7 +94,7 @@ func WithClientRetention(retention time.Duration) ClientOption {
 }
 
 // Enqueue wraps the process of creating a job and enqueueing it with the Asynq client.
-func (c *Client) Enqueue(jobType string, payload interface{}, opts ...JobOption) (string, error) {
+func (c *Client) Enqueue(jobType string, payload any, opts ...JobOption) (string, error) {
 	job := NewJob(jobType, payload, opts...)
 	return c.EnqueueJob(job)
 }
@@ -101,7 +103,15 @@ func (c *Client) Enqueue(jobType string, payload interface{}, opts ...JobOption)
 func (c *Client) EnqueueJob(job *Job) (string, error) {
 	task, opts, err := job.ConvertToAsynqTask()
 	if err != nil {
-		c.errorHandler.HandleError(err, job)
+		// Always log
+		c.logger.Error(fmt.Sprintf("failed to convert job to task: %v, job_id=%s, job_type=%s, fingerprint=%s",
+			err, job.ID, job.Type, job.Fingerprint))
+
+		// Optional: call custom error handler if provided
+		if c.errorHandler != nil {
+			c.errorHandler.HandleError(err, job)
+		}
+
 		return "", err
 	}
 
@@ -119,7 +129,15 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 	// Enqueue the task with the prepared options
 	result, err := c.asynqClient.Enqueue(task, opts...)
 	if err != nil {
-		c.errorHandler.HandleError(err, job)
+		// Always log
+		c.logger.Error(fmt.Sprintf("failed to enqueue job: %v, job_id=%s, job_type=%s, fingerprint=%s",
+			err, job.ID, job.Type, job.Fingerprint))
+
+		// Optional: call custom error handler if provided
+		if c.errorHandler != nil {
+			c.errorHandler.HandleError(err, job)
+		}
+
 		return "", fmt.Errorf("%w: %w", ErrEnqueueJob, err)
 	}
 
