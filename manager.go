@@ -50,7 +50,7 @@ type ManagerInterface interface {
 	RunAggregatingJobs(queue, group string) (int, error)
 	ArchiveAggregatingJobs(queue, group string) (int, error)
 	DeleteAggregatingJobs(queue, group string) (int, error)
-	GetRedisInfo() (*RedisInfo, error)
+	GetRedisInfo(ctx context.Context) (*RedisInfo, error)
 }
 
 // Manager provides an implementation for the ManagerInterface.
@@ -74,9 +74,9 @@ func (s *Manager) ListWorkers() ([]*WorkerInfo, error) {
 		return nil, err
 	}
 
-	workers := make([]*WorkerInfo, 0, len(servers))
-	for _, server := range servers {
-		workers = append(workers, toWorkerInfo(server))
+	workers := make([]*WorkerInfo, len(servers))
+	for i, server := range servers {
+		workers[i] = toWorkerInfo(server)
 	}
 	return workers, nil
 }
@@ -104,13 +104,13 @@ func (s *Manager) ListQueues() ([]*QueueInfo, error) {
 		return nil, err
 	}
 
-	snapshots := make([]*QueueInfo, 0, len(queues))
-	for _, queue := range queues {
+	snapshots := make([]*QueueInfo, len(queues))
+	for i, queue := range queues {
 		qinfo, err := s.Inspector.GetQueueInfo(queue)
 		if err != nil {
 			return nil, err
 		}
-		snapshots = append(snapshots, toQueueInfo(qinfo))
+		snapshots[i] = toQueueInfo(qinfo)
 	}
 	return snapshots, nil
 }
@@ -140,9 +140,9 @@ func (s *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats
 		return nil, err
 	}
 
-	QueuedailyStats := make([]*QueueDailyStats, 0, len(dstats))
-	for _, d := range dstats {
-		QueuedailyStats = append(QueuedailyStats, toQueueDailyStats(d))
+	QueuedailyStats := make([]*QueueDailyStats, len(dstats))
+	for i, d := range dstats {
+		QueuedailyStats[i] = toQueueDailyStats(d)
 	}
 
 	return QueuedailyStats, nil
@@ -317,17 +317,27 @@ func (s *Manager) RunJobsByState(queue string, state JobState) (int, error) {
 	return count, nil
 }
 
-// BatchRunJobs triggers immediate execution of multiple jobs identified by their IDs.
-func (s *Manager) BatchRunJobs(queue string, jobIDs []string) ([]string, []string, error) {
-	var pendingIDs, errorIDs []string
-	for _, jobID := range jobIDs {
-		if err := s.Inspector.RunTask(queue, jobID); err != nil {
-			errorIDs = append(errorIDs, jobID)
+// batchOperation performs a batch operation on items and returns succeeded and failed items.
+func batchOperation[T any](items []T, operation func(T) error) (succeeded, failed []T) {
+	succeeded = make([]T, 0, len(items))
+	failed = make([]T, 0, len(items))
+
+	for _, item := range items {
+		if err := operation(item); err != nil {
+			failed = append(failed, item)
 		} else {
-			pendingIDs = append(pendingIDs, jobID)
+			succeeded = append(succeeded, item)
 		}
 	}
-	return pendingIDs, errorIDs, nil
+	return succeeded, failed
+}
+
+// BatchRunJobs triggers immediate execution of multiple jobs identified by their IDs.
+func (s *Manager) BatchRunJobs(queue string, jobIDs []string) ([]string, []string, error) {
+	succeeded, failed := batchOperation(jobIDs, func(jobID string) error {
+		return s.Inspector.RunTask(queue, jobID)
+	})
+	return succeeded, failed, nil
 }
 
 // ArchiveJob moves a job with the specified ID to the archive.
@@ -384,15 +394,10 @@ func (s *Manager) ArchiveJobsByState(queue string, state JobState) (int, error) 
 
 // BatchArchiveJobs archives multiple jobs identified by their IDs.
 func (s *Manager) BatchArchiveJobs(queue string, jobIDs []string) ([]string, []string, error) {
-	var archivedIDs, errorIDs []string
-	for _, jobID := range jobIDs {
-		if err := s.Inspector.ArchiveTask(queue, jobID); err != nil {
-			errorIDs = append(errorIDs, jobID)
-		} else {
-			archivedIDs = append(archivedIDs, jobID)
-		}
-	}
-	return archivedIDs, errorIDs, nil
+	succeeded, failed := batchOperation(jobIDs, func(jobID string) error {
+		return s.Inspector.ArchiveTask(queue, jobID)
+	})
+	return succeeded, failed, nil
 }
 
 // CancelJob cancels a job with the specified ID.
@@ -442,15 +447,10 @@ func (s *Manager) CancelActiveJobs(queue string, size, page int) (int, error) {
 
 // BatchCancelJobs cancels multiple jobs identified by their IDs.
 func (s *Manager) BatchCancelJobs(jobIDs []string) ([]string, []string, error) {
-	var canceledIDs, errorIDs []string
-	for _, id := range jobIDs {
-		if err := s.Inspector.CancelProcessing(id); err != nil {
-			errorIDs = append(errorIDs, id)
-		} else {
-			canceledIDs = append(canceledIDs, id)
-		}
-	}
-	return canceledIDs, errorIDs, nil
+	succeeded, failed := batchOperation(jobIDs, func(jobID string) error {
+		return s.Inspector.CancelProcessing(jobID)
+	})
+	return succeeded, failed, nil
 }
 
 // DeleteJob deletes a job with the specified ID from its queue.
@@ -501,15 +501,10 @@ func (s *Manager) DeleteJobsByState(queue string, state JobState) (int, error) {
 
 // BatchDeleteJobs deletes multiple jobs identified by their IDs.
 func (s *Manager) BatchDeleteJobs(queue string, jobIDs []string) ([]string, []string, error) {
-	var deletedIDs, failedIDs []string
-	for _, jobID := range jobIDs {
-		if err := s.Inspector.DeleteTask(queue, jobID); err != nil {
-			failedIDs = append(failedIDs, jobID)
-		} else {
-			deletedIDs = append(deletedIDs, jobID)
-		}
-	}
-	return deletedIDs, failedIDs, nil
+	succeeded, failed := batchOperation(jobIDs, func(jobID string) error {
+		return s.Inspector.DeleteTask(queue, jobID)
+	})
+	return succeeded, failed, nil
 }
 
 // RunAggregatingJobs triggers all aggregating jobs to run immediately in a specified queue and group.
@@ -528,19 +523,19 @@ func (s *Manager) DeleteAggregatingJobs(queue, group string) (int, error) {
 }
 
 // GetRedisInfo retrieves information from the Redis server or cluster.
-func (s *Manager) GetRedisInfo() (*RedisInfo, error) {
+func (s *Manager) GetRedisInfo(ctx context.Context) (*RedisInfo, error) {
 	switch client := s.Client.(type) {
 	case *redis.ClusterClient:
-		return s.getRedisClusterInfo(client)
+		return s.getRedisClusterInfo(ctx, client)
 	case *redis.Client:
-		return s.getRedisStandardInfo(client)
+		return s.getRedisStandardInfo(ctx, client)
 	default:
 		return nil, ErrRedisClientTypeNotSupported
 	}
 }
 
-func (s *Manager) getRedisStandardInfo(client *redis.Client) (*RedisInfo, error) {
-	rawInfo, err := client.Info(context.Background(), "all").Result()
+func (s *Manager) getRedisStandardInfo(ctx context.Context, client *redis.Client) (*RedisInfo, error) {
+	rawInfo, err := client.Info(ctx, "all").Result()
 	if err != nil {
 		return nil, err
 	}
@@ -553,8 +548,7 @@ func (s *Manager) getRedisStandardInfo(client *redis.Client) (*RedisInfo, error)
 	}, nil
 }
 
-func (s *Manager) getRedisClusterInfo(client *redis.ClusterClient) (*RedisInfo, error) {
-	ctx := context.Background()
+func (s *Manager) getRedisClusterInfo(ctx context.Context, client *redis.ClusterClient) (*RedisInfo, error) {
 	rawInfo, err := client.Info(ctx).Result()
 	if err != nil {
 		return nil, err

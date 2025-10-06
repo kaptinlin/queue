@@ -116,7 +116,7 @@ func (h *Handler) processWithTimeout(ctx context.Context, job *Job) error {
 	ctx, cancel := context.WithTimeout(ctx, h.JobTimeout)
 	defer cancel()
 
-	done := make(chan error, 1)
+	done := make(chan error, DefaultHandlerChannelBuffer)
 	go func() {
 		done <- h.processJob(ctx, job)
 	}()
@@ -135,7 +135,7 @@ func (h *Handler) processWithTimeout(ctx context.Context, job *Job) error {
 // processJob executes the handler's job processing function, applying rate limiting if configured.
 func (h *Handler) processJob(ctx context.Context, job *Job) error {
 	if h.Limiter != nil && !h.Limiter.Allow() {
-		return &ErrRateLimit{RetryAfter: 10 * time.Second}
+		return &ErrRateLimit{RetryAfter: DefaultRateLimitRetryAfter}
 	}
 	return h.Handle(ctx, job)
 }

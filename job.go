@@ -2,10 +2,10 @@ package queue
 
 import (
 	"crypto/md5" //nolint:gosec
-	"encoding/json"
 	"fmt"
 	"time"
 
+	"github.com/go-json-experiment/json"
 	"github.com/hibiken/asynq"
 )
 
@@ -170,7 +170,7 @@ func (j *Job) SetResultWriter(rw *asynq.ResultWriter) *Job {
 // WriteResult writes the result of the job to the result writer.
 func (j *Job) WriteResult(result interface{}) error {
 	if j.resultWriter == nil {
-		return fmt.Errorf("%w", ErrResultWriterNotSet)
+		return ErrResultWriterNotSet
 	}
 
 	resultBytes, err := json.Marshal(result)
