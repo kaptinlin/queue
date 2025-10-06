@@ -16,13 +16,13 @@ import (
 )
 
 func main() {
-    redisConfig := queue.RedisConfig{
-        Addr: "localhost:6379",
-        DB:   0,
-    }
+    redisConfig := queue.NewRedisConfig(
+        queue.WithRedisAddress("localhost:6379"),
+        queue.WithRedisDB(0),
+    )
     asynqRedisOpt := redisConfig.ToAsynqRedisOpt()
     inspector := asynq.NewInspector(asynqRedisOpt)
-	redisClient := asynqRedisOpt.MakeRedisClient().(redis.UniversalClient)
+    redisClient := asynqRedisOpt.MakeRedisClient().(redis.UniversalClient)
 
     manager := queue.NewManager(redisClient, inspector)
 }

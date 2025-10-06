@@ -1,12 +1,12 @@
 # Golang Queue Processing Library
 
-This library offers a robust and flexible solution for managing and processing queued jobs in Go applications. Built on top of the [Asynq](https://github.com/hibiken/asynq) task processing library, which uses Redis for storage, it provides advanced features like custom error handling, retries, priority queues, rate limiting, and job retention. Whether you're building a simple task runner or a complex distributed system, this library is designed to meet your needs with efficiency and ease. It also supports the setup of multiple workers across different machines, allowing for scalable and distributed job processing.
+This library offers a robust and flexible solution for managing and processing queued jobs in Go applications. Built on top of the [Asynq](https://github.com/hibiken/asynq) task processing library, which uses Redis for storage, it provides advanced features like automatic error logging, custom error handling, retries, priority queues, rate limiting, and job retention. Whether you're building a simple task runner or a complex distributed system, this library is designed to meet your needs with efficiency and ease. It also supports the setup of multiple workers across different machines, allowing for scalable and distributed job processing.
 
 ## Getting Started
 
 ### Installation
 
-Ensure your Go environment is ready (requires Go version 1.21.4 or higher), then install the library:
+Ensure your Go environment is ready (requires Go version 1.25 or higher), then install the library:
 
 ```bash
 go get -u github.com/kaptinlin/queue
@@ -35,6 +35,18 @@ client, err := queue.NewClient(redisConfig)
 if err != nil {
     log.Fatalf("Error initializing client: %v", err)
 }
+```
+
+The client automatically logs errors using structured logging. For custom logging or advanced error handling (metrics, alerts), see [Error Handling](./docs/error_handling.md).
+
+```go
+// Optional: Custom logger
+client, err := queue.NewClient(redisConfig,
+    queue.WithClientLogger(myLogger))
+
+// Optional: Advanced error handling (metrics, alerts)
+client, err := queue.NewClient(redisConfig,
+    queue.WithClientErrorHandler(&MyErrorHandler{}))
 ```
 ### Job Enqueueing
 
@@ -99,6 +111,18 @@ if err != nil {
 if err := worker.Start(); err != nil {
     log.Fatalf("Failed to start worker: %v", err)
 }
+```
+
+Workers automatically log processing errors. For custom logging or advanced error handling, use options:
+
+```go
+// Optional: Custom logger
+worker, err := queue.NewWorker(redisConfig,
+    queue.WithWorkerLogger(myLogger))
+
+// Optional: Advanced error handling (metrics, alerts)
+worker, err := queue.NewWorker(redisConfig,
+    queue.WithWorkerErrorHandler(&MyErrorHandler{}))
 ```
 
 ### Graceful Shutdown
