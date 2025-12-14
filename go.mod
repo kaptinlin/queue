@@ -3,12 +3,12 @@ module github.com/kaptinlin/queue
 go 1.25
 
 require (
-	github.com/go-json-experiment/json v0.0.0-20250910080747-cc2cfa0554c3
+	github.com/go-json-experiment/json v0.0.0-20251027170946-4849db3c2f7e
 	github.com/hibiken/asynq v0.25.1
-	github.com/redis/go-redis/v9 v9.14.0
+	github.com/redis/go-redis/v9 v9.17.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/time v0.13.0
+	golang.org/x/time v0.14.0
 )
 
 require (
@@ -18,7 +18,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
-	golang.org/x/sys v0.36.0 // indirect
-	google.golang.org/protobuf v1.36.10 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

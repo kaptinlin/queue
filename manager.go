@@ -317,27 +317,32 @@ func (s *Manager) RunJobsByState(queue string, state JobState) (int, error) {
 	return count, nil
 }
 
-// batchOperation performs a batch operation on items and returns succeeded and failed items.
-func batchOperation[T any](items []T, operation func(T) error) (succeeded, failed []T) {
+// batchOperation performs a batch operation on items and returns succeeded, failed items, and aggregated errors.
+func batchOperation[T any](items []T, operation func(T) error) (succeeded, failed []T, err error) {
 	succeeded = make([]T, 0, len(items))
 	failed = make([]T, 0, len(items))
+	var errs []error
 
 	for _, item := range items {
-		if err := operation(item); err != nil {
+		if opErr := operation(item); opErr != nil {
 			failed = append(failed, item)
+			errs = append(errs, opErr)
 		} else {
 			succeeded = append(succeeded, item)
 		}
 	}
-	return succeeded, failed
+
+	if len(errs) > 0 {
+		return succeeded, failed, errors.Join(errs...)
+	}
+	return succeeded, failed, nil
 }
 
 // BatchRunJobs triggers immediate execution of multiple jobs identified by their IDs.
 func (s *Manager) BatchRunJobs(queue string, jobIDs []string) ([]string, []string, error) {
-	succeeded, failed := batchOperation(jobIDs, func(jobID string) error {
+	return batchOperation(jobIDs, func(jobID string) error {
 		return s.Inspector.RunTask(queue, jobID)
 	})
-	return succeeded, failed, nil
 }
 
 // ArchiveJob moves a job with the specified ID to the archive.
@@ -394,10 +399,9 @@ func (s *Manager) ArchiveJobsByState(queue string, state JobState) (int, error) 
 
 // BatchArchiveJobs archives multiple jobs identified by their IDs.
 func (s *Manager) BatchArchiveJobs(queue string, jobIDs []string) ([]string, []string, error) {
-	succeeded, failed := batchOperation(jobIDs, func(jobID string) error {
+	return batchOperation(jobIDs, func(jobID string) error {
 		return s.Inspector.ArchiveTask(queue, jobID)
 	})
-	return succeeded, failed, nil
 }
 
 // CancelJob cancels a job with the specified ID.
@@ -447,10 +451,9 @@ func (s *Manager) CancelActiveJobs(queue string, size, page int) (int, error) {
 
 // BatchCancelJobs cancels multiple jobs identified by their IDs.
 func (s *Manager) BatchCancelJobs(jobIDs []string) ([]string, []string, error) {
-	succeeded, failed := batchOperation(jobIDs, func(jobID string) error {
+	return batchOperation(jobIDs, func(jobID string) error {
 		return s.Inspector.CancelProcessing(jobID)
 	})
-	return succeeded, failed, nil
 }
 
 // DeleteJob deletes a job with the specified ID from its queue.
@@ -501,10 +504,9 @@ func (s *Manager) DeleteJobsByState(queue string, state JobState) (int, error) {
 
 // BatchDeleteJobs deletes multiple jobs identified by their IDs.
 func (s *Manager) BatchDeleteJobs(queue string, jobIDs []string) ([]string, []string, error) {
-	succeeded, failed := batchOperation(jobIDs, func(jobID string) error {
+	return batchOperation(jobIDs, func(jobID string) error {
 		return s.Inspector.DeleteTask(queue, jobID)
 	})
-	return succeeded, failed, nil
 }
 
 // RunAggregatingJobs triggers all aggregating jobs to run immediately in a specified queue and group.
