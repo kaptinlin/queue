@@ -119,10 +119,7 @@ func (s *Manager) ListQueues() ([]*QueueInfo, error) {
 func (s *Manager) GetQueueInfo(queueName string) (*QueueInfo, error) {
 	qinfo, err := s.Inspector.GetQueueInfo(queueName)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
-			return nil, ErrQueueNotFound
-		}
-		return nil, err
+		return nil, s.handleQueueError(err)
 	}
 
 	snapshot := toQueueInfo(qinfo)
@@ -134,10 +131,7 @@ func (s *Manager) GetQueueInfo(queueName string) (*QueueInfo, error) {
 func (s *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats, error) {
 	dstats, err := s.Inspector.History(queueName, days)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
-			return nil, ErrQueueNotFound
-		}
-		return nil, err
+		return nil, s.handleQueueError(err)
 	}
 
 	QueuedailyStats := make([]*QueueDailyStats, len(dstats))
@@ -152,13 +146,10 @@ func (s *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats
 func (s *Manager) DeleteQueue(queueName string, force bool) error {
 	err := s.Inspector.DeleteQueue(queueName, force)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
-			return ErrQueueNotFound
-		}
 		if errors.Is(err, asynq.ErrQueueNotEmpty) {
 			return ErrQueueNotEmpty
 		}
-		return err
+		return s.handleQueueError(err)
 	}
 	return nil
 }
@@ -167,10 +158,7 @@ func (s *Manager) DeleteQueue(queueName string, force bool) error {
 func (s *Manager) PauseQueue(queueName string) error {
 	err := s.Inspector.PauseQueue(queueName)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
-			return ErrQueueNotFound
-		}
-		return err
+		return s.handleQueueError(err)
 	}
 	return nil
 }
@@ -179,10 +167,7 @@ func (s *Manager) PauseQueue(queueName string) error {
 func (s *Manager) ResumeQueue(queueName string) error {
 	err := s.Inspector.UnpauseQueue(queueName)
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
-			return ErrQueueNotFound
-		}
-		return err
+		return s.handleQueueError(err)
 	}
 	return nil
 }
@@ -621,6 +606,13 @@ func parseRedisInfo(infoStr string) map[string]string {
 		}
 	}
 	return info
+}
+
+func (s *Manager) handleQueueError(err error) error {
+	if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
+		return ErrQueueNotFound
+	}
+	return err
 }
 
 func isQueueNotFoundError(err error) bool {

@@ -37,18 +37,7 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 		return nil, fmt.Errorf("%w: %w", ErrInvalidRedisConfig, err)
 	}
 
-	asynqClient := asynq.NewClient(asynq.RedisClientOpt{
-		Network:      redisConfig.Network,
-		Addr:         redisConfig.Addr,
-		Username:     redisConfig.Username,
-		Password:     redisConfig.Password,
-		DB:           redisConfig.DB,
-		DialTimeout:  redisConfig.DialTimeout,
-		ReadTimeout:  redisConfig.ReadTimeout,
-		WriteTimeout: redisConfig.WriteTimeout,
-		PoolSize:     redisConfig.PoolSize,
-		TLSConfig:    redisConfig.TLSConfig,
-	})
+	asynqClient := asynq.NewClient(redisConfig.ToAsynqRedisOpt())
 
 	config := &ClientConfig{
 		Logger:    NewDefaultLogger(), // Default to slog-based logger.
@@ -103,15 +92,7 @@ func (c *Client) Enqueue(jobType string, payload any, opts ...JobOption) (string
 func (c *Client) EnqueueJob(job *Job) (string, error) {
 	task, opts, err := job.ConvertToAsynqTask()
 	if err != nil {
-		// Always log
-		c.logger.Error(fmt.Sprintf("failed to convert job to task: %v, job_id=%s, job_type=%s, fingerprint=%s",
-			err, job.ID, job.Type, job.Fingerprint))
-
-		// Optional: call custom error handler if provided
-		if c.errorHandler != nil {
-			c.errorHandler.HandleError(err, job)
-		}
-
+		c.handleJobError(err, job, "failed to convert job to task")
 		return "", err
 	}
 
@@ -129,19 +110,23 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 	// Enqueue the task with the prepared options
 	result, err := c.asynqClient.Enqueue(task, opts...)
 	if err != nil {
-		// Always log
-		c.logger.Error(fmt.Sprintf("failed to enqueue job: %v, job_id=%s, job_type=%s, fingerprint=%s",
-			err, job.ID, job.Type, job.Fingerprint))
-
-		// Optional: call custom error handler if provided
-		if c.errorHandler != nil {
-			c.errorHandler.HandleError(err, job)
-		}
-
+		c.handleJobError(err, job, "failed to enqueue job")
 		return "", fmt.Errorf("%w: %w", ErrEnqueueJob, err)
 	}
 
 	return result.ID, nil
+}
+
+// handleJobError logs the error and calls the custom error handler if one is registered.
+func (c *Client) handleJobError(err error, job *Job, msg string) {
+	// Always log
+	c.logger.Error(fmt.Sprintf("%s: %v, job_id=%s, job_type=%s, fingerprint=%s",
+		msg, err, job.ID, job.Type, job.Fingerprint))
+
+	// Optional: call custom error handler if provided
+	if c.errorHandler != nil {
+		c.errorHandler.HandleError(err, job)
+	}
 }
 
 // Stop terminates the Asynq client connection, releasing resources.
