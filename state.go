@@ -42,9 +42,10 @@ var taskStateToJobStateMap = map[asynq.TaskState]JobState{
 	asynq.TaskStateAggregating: StateAggregating,
 }
 
-func toJobState(taskState asynq.TaskState) JobState {
-	if jobState, exists := taskStateToJobStateMap[taskState]; exists {
-		return jobState
-	}
-	return JobState("unknown")
+// toJobState converts an asynq.TaskState to a JobState.
+// It returns the mapped state and true if the mapping exists,
+// or an empty JobState and false for unknown task states.
+func toJobState(taskState asynq.TaskState) (JobState, bool) {
+	jobState, ok := taskStateToJobStateMap[taskState]
+	return jobState, ok
 }

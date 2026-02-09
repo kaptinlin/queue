@@ -9,19 +9,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var (
-	ErrInvalidJobState              = errors.New("invalid job state provided")
-	ErrOperationNotSupported        = errors.New("operation not supported for the given job state")
-	ErrArchivingActiveJobsDirectly  = errors.New("archiving active jobs directly is not supported")
-	ErrGroupRequiredForAggregation  = errors.New("group identifier required for aggregating jobs operation")
-	ErrUnsupportedJobStateForAction = errors.New("unsupported job state for the requested action")
-	ErrRedisClientTypeNotSupported  = errors.New("redis client type not supported")
-	ErrQueueNotFound                = errors.New("queue not found")
-	ErrQueueNotEmpty                = errors.New("queue is not empty")
-	ErrJobNotFound                  = errors.New("job not found")
-	ErrWorkerNotFound               = errors.New("worker not found")
-)
-
 // ManagerInterface defines operations for managing and retrieving information about workers and their jobs.
 type ManagerInterface interface {
 	ListWorkers() ([]*WorkerInfo, error)
@@ -367,7 +354,7 @@ func (s *Manager) ArchiveJobsByState(queue string, state JobState) (int, error) 
 		count, err = s.inspector.ArchiveAllRetryTasks(queue)
 	case StateActive:
 		// Archiving active jobs directly is typically not supported as they are currently being processed.
-		return 0, ErrArchivingActiveJobsDirectly
+		return 0, ErrArchivingActiveJobs
 	case StateAggregating:
 		// Archiving aggregating jobs requires specifying a group identifier.
 		return 0, ErrGroupRequiredForAggregation
@@ -517,7 +504,7 @@ func (s *Manager) GetRedisInfo(ctx context.Context) (*RedisInfo, error) {
 	case *redis.Client:
 		return s.getRedisStandardInfo(ctx, client)
 	default:
-		return nil, ErrRedisClientTypeNotSupported
+		return nil, ErrRedisClientNotSupported
 	}
 }
 

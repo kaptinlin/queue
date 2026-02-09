@@ -170,10 +170,14 @@ func toJobInfo(ti *asynq.TaskInfo, wi *asynq.WorkerInfo) *JobInfo {
 	if ti == nil {
 		return nil
 	}
+	state, ok := toJobState(ti.State)
+	if !ok {
+		state = JobState(ti.State.String())
+	}
 	jobInfo := &JobInfo{
 		ID:         ti.ID,
 		Type:       ti.Type,
-		State:      toJobState(ti.State),
+		State:      state,
 		Payload:    string(ti.Payload),
 		Queue:      ti.Queue,
 		MaxRetry:   ti.MaxRetry,

@@ -8,29 +8,51 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// Define package-level error variables with descriptive names.
+// Job errors are returned when job validation or processing fails.
 var (
-	ErrNoJobQueueSpecified      = errors.New("job requires a specified queue")
-	ErrNoJobTypeSpecified       = errors.New("job requires a specified type")
-	ErrJobExceededDeadline      = errors.New("job failed to complete by deadline")
-	ErrJobExceededMaxRetries    = errors.New("job exceeded maximum retry attempts")
-	ErrInvalidRedisConfig       = errors.New("redis configuration is invalid")
-	ErrInvalidWorkerConfig      = errors.New("worker configuration is invalid")
-	ErrInvalidWorkerQueues      = errors.New("worker configuration must specify at least one queue")
-	ErrInvalidWorkerConcurrency = errors.New("worker configuration must specify a positive concurrency value")
-	ErrSerializationFailure     = errors.New("failure in serialization process")
-	ErrEnqueueJob               = errors.New("unable to enqueue job")
-	ErrScheduledTimeInPast      = errors.New("scheduled time must be in the future")
-	ErrJobProcessingTimeout     = errors.New("job processing exceeded timeout")
-	ErrTransientIssue           = errors.New("temporary issue detected, job will retry without affecting retry count")
-	ErrResultWriterNotSet       = errors.New("result writer is not set for the job")
-	ErrFailedToWriteResult      = errors.New("failed to write job result")
-	ErrWorkerAlreadyStarted     = errors.New("worker is already started")
-	ErrHandlerAlreadyRegistered = errors.New("handler is already registered")
-	ErrRedisEmptyAddress        = errors.New("address cannot be empty")
-	ErrRedisUnsupportedNetwork  = errors.New("unsupported network type")
-	ErrRedisInvalidAddress      = errors.New("invalid address format")
-	ErrRedisTLSRequired         = errors.New("TLS config is required for secure Redis connections")
+	ErrNoJobQueueSpecified   = errors.New("job requires a specified queue")
+	ErrNoJobTypeSpecified    = errors.New("job requires a specified type")
+	ErrJobExceededDeadline   = errors.New("job failed to complete by deadline")
+	ErrJobExceededMaxRetries = errors.New("job exceeded maximum retry attempts")
+	ErrJobProcessingTimeout  = errors.New("job processing exceeded timeout")
+	ErrScheduledTimeInPast   = errors.New("scheduled time must be in the future")
+	ErrSerializationFailure  = errors.New("failure in serialization process")
+	ErrResultWriterNotSet    = errors.New("result writer is not set for the job")
+	ErrFailedToWriteResult   = errors.New("failed to write job result")
+	ErrEnqueueJob            = errors.New("unable to enqueue job")
+	ErrTransientIssue        = errors.New("transient issue, job will retry without affecting retry count")
+	ErrInvalidJobState       = errors.New("invalid job state")
+	ErrJobNotFound           = errors.New("job not found")
+)
+
+// Worker errors are returned when worker configuration or lifecycle operations fail.
+var (
+	ErrInvalidWorkerConfig      = errors.New("invalid worker configuration")
+	ErrInvalidWorkerQueues      = errors.New("worker requires at least one queue")
+	ErrInvalidWorkerConcurrency = errors.New("worker requires a positive concurrency value")
+	ErrWorkerAlreadyStarted     = errors.New("worker already started")
+	ErrHandlerAlreadyRegistered = errors.New("handler already registered")
+	ErrWorkerNotFound           = errors.New("worker not found")
+)
+
+// Redis errors are returned when Redis configuration validation fails.
+var (
+	ErrInvalidRedisConfig      = errors.New("invalid redis configuration")
+	ErrRedisEmptyAddress       = errors.New("address cannot be empty")
+	ErrRedisUnsupportedNetwork = errors.New("unsupported network type")
+	ErrRedisInvalidAddress     = errors.New("invalid address format")
+	ErrRedisTLSRequired        = errors.New("TLS configuration required for rediss:// connections")
+	ErrRedisClientNotSupported = errors.New("redis client type not supported")
+)
+
+// Manager errors are returned when queue management operations fail.
+var (
+	ErrOperationNotSupported        = errors.New("operation not supported for the given job state")
+	ErrArchivingActiveJobs          = errors.New("cannot archive active jobs directly, cancel first")
+	ErrGroupRequiredForAggregation  = errors.New("group identifier required for aggregating jobs")
+	ErrUnsupportedJobStateForAction = errors.New("unsupported job state for the requested action")
+	ErrQueueNotFound                = errors.New("queue not found")
+	ErrQueueNotEmpty                = errors.New("queue is not empty")
 )
 
 // ErrSkipRetry indicates a specific Asynq framework condition to skip retries and move the job to the archive.
