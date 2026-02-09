@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -8,6 +9,40 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mockLogger captures log messages for testing.
+type mockLogger struct {
+	mu       sync.Mutex
+	messages []mockLogEntry
+}
+
+type mockLogEntry struct {
+	level string
+	args  []interface{}
+}
+
+func (l *mockLogger) log(level string, args ...interface{}) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.messages = append(l.messages, mockLogEntry{level: level, args: args})
+}
+
+func (l *mockLogger) Debug(args ...interface{}) { l.log("debug", args...) }
+func (l *mockLogger) Info(args ...interface{})  { l.log("info", args...) }
+func (l *mockLogger) Warn(args ...interface{})  { l.log("warn", args...) }
+func (l *mockLogger) Error(args ...interface{}) { l.log("error", args...) }
+func (l *mockLogger) Fatal(args ...interface{}) { l.log("fatal", args...) }
+
+func (l *mockLogger) hasLevel(level string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, m := range l.messages {
+		if m.level == level {
+			return true
+		}
+	}
+	return false
+}
 
 func TestSchedulerInitialization(t *testing.T) {
 	redisConfig := getRedisConfig()
@@ -111,4 +146,31 @@ func TestSchedulerPostEnqueueHook(t *testing.T) {
 	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
 
 	assert.True(t, postEnqueueCalled, "Expected PostEnqueueFunc to be called")
+}
+
+func TestSchedulerPostEnqueueUsesConfiguredLogger(t *testing.T) {
+	redisConfig := getRedisConfig()
+	logger := &mockLogger{}
+
+	scheduler, err := queue.NewScheduler(redisConfig,
+		queue.WithSchedulerLogger(logger),
+	)
+	require.NoError(t, err, "Failed to create scheduler with custom logger")
+
+	_, err = scheduler.RegisterCron("@every 1s", "logger_test", map[string]interface{}{"key": "value"})
+	require.NoError(t, err, "Failed to register cron job")
+
+	go func() {
+		if err := scheduler.Start(); err != nil {
+			t.Errorf("Failed to start scheduler: %v", err)
+		}
+	}()
+	defer func() {
+		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
+	}()
+
+	time.Sleep(5 * time.Second) // Wait for the scheduler to enqueue jobs
+
+	// Verify the configured logger received info-level messages from PostEnqueueFunc
+	assert.True(t, logger.hasLevel("info"), "Expected configured logger to receive info log from PostEnqueueFunc")
 }

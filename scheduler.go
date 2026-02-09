@@ -2,7 +2,6 @@ package queue
 
 import (
 	"errors"
-	"log"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -89,6 +88,11 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 		opt(&options)
 	}
 
+	logger := options.Logger
+	if logger == nil {
+		logger = NewDefaultLogger()
+	}
+
 	configProvider := options.ConfigProvider
 	if configProvider == nil {
 		configProvider = NewMemoryConfigProvider()
@@ -101,7 +105,7 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 			SyncInterval:               options.SyncInterval,
 			SchedulerOpts: &asynq.SchedulerOpts{
 				Location: options.Location,
-				Logger:   options.Logger,
+				Logger:   logger,
 				PreEnqueueFunc: func(task *asynq.Task, opts []asynq.Option) {
 					if options.PreEnqueueFunc != nil {
 						job, _ := NewJobFromAsynqTask(task)
@@ -109,7 +113,11 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 					}
 				},
 				PostEnqueueFunc: func(taskInfo *asynq.TaskInfo, err error) {
-					log.Printf("Enqueued task: %v, err: %v", taskInfo, err)
+					if err != nil {
+						logger.Error("Failed to enqueue task: ", err)
+					} else {
+						logger.Info("Enqueued task: ", taskInfo.Type)
+					}
 					if options.PostEnqueueFunc != nil {
 						jobInfo := toJobInfo(taskInfo, nil)
 						options.PostEnqueueFunc(jobInfo, err)
