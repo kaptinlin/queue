@@ -9,6 +9,7 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+// ErrInvalidCronSpec is returned when a cron specification string cannot be parsed.
 var ErrInvalidCronSpec = errors.New("invalid cron spec")
 
 // Scheduler manages job scheduling with Asynq.

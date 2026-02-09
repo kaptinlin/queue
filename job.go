@@ -57,28 +57,32 @@ func (j *Job) WithOptions(opts ...JobOption) {
 // JobOption defines a function signature for job configuration options.
 type JobOption func(*Job)
 
-// Job configuration options follow, allowing customization of the job's behavior.
-
+// WithDelay sets the initial delay before the job is processed.
 func WithDelay(delay time.Duration) JobOption {
 	return func(j *Job) { j.Options.Delay = delay }
 }
 
+// WithMaxRetries sets the maximum number of retry attempts for the job.
 func WithMaxRetries(maxRetries int) JobOption {
 	return func(j *Job) { j.Options.MaxRetries = maxRetries }
 }
 
+// WithQueue sets the queue name to which the job is dispatched.
 func WithQueue(queue string) JobOption {
 	return func(j *Job) { j.Options.Queue = queue }
 }
 
+// WithScheduleAt sets a specific time at which the job should be processed.
 func WithScheduleAt(scheduleAt *time.Time) JobOption {
 	return func(j *Job) { j.Options.ScheduleAt = scheduleAt }
 }
 
+// WithRetention sets the duration to retain the job data after completion.
 func WithRetention(retention time.Duration) JobOption {
 	return func(j *Job) { j.Options.Retention = retention }
 }
 
+// WithDeadline sets the time by which the job must complete.
 func WithDeadline(deadline *time.Time) JobOption {
 	return func(j *Job) { j.Options.Deadline = deadline }
 }
@@ -186,6 +190,8 @@ func (j *Job) WriteResult(result any) error {
 	return nil
 }
 
+// NewJobFromAsynqTask creates a Job from an existing asynq.Task.
+// The returned Job contains the task's type and raw payload bytes.
 func NewJobFromAsynqTask(task *asynq.Task) (*Job, error) {
 	job := &Job{
 		Type:    task.Type(),

@@ -15,8 +15,13 @@ import (
 )
 
 const (
-	DefaultQueue                = "default"
-	DefaultRateLimitRetryAfter  = 10 * time.Second
+	// DefaultQueue is the default queue name used when no queue is specified.
+	DefaultQueue = "default"
+	// DefaultRateLimitRetryAfter is the default duration to wait before
+	// retrying a rate-limited job.
+	DefaultRateLimitRetryAfter = 10 * time.Second
+	// DefaultHandlerChannelBuffer is the default buffer size for the
+	// handler's internal done channel used in timeout processing.
 	DefaultHandlerChannelBuffer = 1
 )
 

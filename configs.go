@@ -7,17 +7,27 @@ import (
 	"github.com/hibiken/asynq"
 )
 
+// Scheduler configuration errors.
 var (
-	ErrJobAlreadyExists  = errors.New("job already exists")
+	// ErrJobAlreadyExists is returned when attempting to register a job
+	// that already exists in the config provider.
+	ErrJobAlreadyExists = errors.New("job already exists")
+	// ErrConfigJobNotFound is returned when attempting to unregister a job
+	// that does not exist in the config provider.
 	ErrConfigJobNotFound = errors.New("job not found")
 )
 
+// ConfigProvider defines the interface for managing periodic job configurations.
+// It extends [asynq.PeriodicTaskConfigProvider] with registration and
+// unregistration capabilities.
 type ConfigProvider interface {
 	asynq.PeriodicTaskConfigProvider
 	RegisterCronJob(spec string, job *Job) (string, error)
 	UnregisterJob(identifier string) error
 }
 
+// JobConfig holds the configuration for a scheduled job, including the job
+// definition and its cron schedule or interval specification.
 type JobConfig struct {
 	Job      *Job   // The job to be scheduled.
 	Schedule string // Holds either a cron spec or an interval in string format.

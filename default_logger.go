@@ -15,11 +15,21 @@ func NewDefaultLogger() *DefaultLogger {
 	return &DefaultLogger{}
 }
 
-func (l *DefaultLogger) Debug(args ...interface{}) { slog.Debug(fmt.Sprint(args...)) }
-func (l *DefaultLogger) Info(args ...interface{})  { slog.Info(fmt.Sprint(args...)) }
-func (l *DefaultLogger) Warn(args ...interface{})  { slog.Warn(fmt.Sprint(args...)) }
-func (l *DefaultLogger) Error(args ...interface{}) { slog.Error(fmt.Sprint(args...)) }
-func (l *DefaultLogger) Fatal(args ...interface{}) {
+// Debug logs a message at Debug level using slog.
+func (l *DefaultLogger) Debug(args ...any) { slog.Debug(fmt.Sprint(args...)) }
+
+// Info logs a message at Info level using slog.
+func (l *DefaultLogger) Info(args ...any) { slog.Info(fmt.Sprint(args...)) }
+
+// Warn logs a message at Warning level using slog.
+func (l *DefaultLogger) Warn(args ...any) { slog.Warn(fmt.Sprint(args...)) }
+
+// Error logs a message at Error level using slog.
+func (l *DefaultLogger) Error(args ...any) { slog.Error(fmt.Sprint(args...)) }
+
+// Fatal logs a message at Error level using slog and exits the process
+// with status code 1.
+func (l *DefaultLogger) Fatal(args ...any) {
 	slog.Error(fmt.Sprint(args...))
 	os.Exit(1)
 }

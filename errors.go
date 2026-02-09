@@ -10,49 +10,105 @@ import (
 
 // Job errors are returned when job validation or processing fails.
 var (
-	ErrNoJobQueueSpecified   = errors.New("job requires a specified queue")
-	ErrNoJobTypeSpecified    = errors.New("job requires a specified type")
-	ErrJobExceededDeadline   = errors.New("job failed to complete by deadline")
+	// ErrNoJobQueueSpecified is returned when a job has no queue assigned.
+	ErrNoJobQueueSpecified = errors.New("job requires a specified queue")
+	// ErrNoJobTypeSpecified is returned when a job has no type assigned.
+	ErrNoJobTypeSpecified = errors.New("job requires a specified type")
+	// ErrJobExceededDeadline is returned when a job fails to complete
+	// before its deadline.
+	ErrJobExceededDeadline = errors.New("job failed to complete by deadline")
+	// ErrJobExceededMaxRetries is returned when a job has exhausted all
+	// retry attempts.
 	ErrJobExceededMaxRetries = errors.New("job exceeded maximum retry attempts")
-	ErrJobProcessingTimeout  = errors.New("job processing exceeded timeout")
-	ErrScheduledTimeInPast   = errors.New("scheduled time must be in the future")
-	ErrSerializationFailure  = errors.New("failure in serialization process")
-	ErrResultWriterNotSet    = errors.New("result writer is not set for the job")
-	ErrFailedToWriteResult   = errors.New("failed to write job result")
-	ErrEnqueueJob            = errors.New("unable to enqueue job")
-	ErrTransientIssue        = errors.New("transient issue, job will retry without affecting retry count")
-	ErrInvalidJobState       = errors.New("invalid job state")
-	ErrJobNotFound           = errors.New("job not found")
+	// ErrJobProcessingTimeout is returned when a job exceeds its
+	// configured processing timeout.
+	ErrJobProcessingTimeout = errors.New("job processing exceeded timeout")
+	// ErrScheduledTimeInPast is returned when a job is scheduled for a
+	// time that has already passed.
+	ErrScheduledTimeInPast = errors.New("scheduled time must be in the future")
+	// ErrSerializationFailure is returned when job payload serialization
+	// or deserialization fails.
+	ErrSerializationFailure = errors.New("failure in serialization process")
+	// ErrResultWriterNotSet is returned when [Job.WriteResult] is called
+	// but no result writer has been configured.
+	ErrResultWriterNotSet = errors.New("result writer is not set for the job")
+	// ErrFailedToWriteResult is returned when writing a job result to
+	// Redis fails.
+	ErrFailedToWriteResult = errors.New("failed to write job result")
+	// ErrEnqueueJob is returned when the client fails to enqueue a job.
+	ErrEnqueueJob = errors.New("unable to enqueue job")
+	// ErrTransientIssue indicates a temporary failure that should be
+	// retried without counting against the job's retry limit.
+	ErrTransientIssue = errors.New("transient issue, job will retry without affecting retry count")
+	// ErrInvalidJobState is returned when an invalid [JobState] is
+	// provided to a manager operation.
+	ErrInvalidJobState = errors.New("invalid job state")
+	// ErrJobNotFound is returned when a job cannot be found by its ID.
+	ErrJobNotFound = errors.New("job not found")
 )
 
 // Worker errors are returned when worker configuration or lifecycle operations fail.
 var (
-	ErrInvalidWorkerConfig      = errors.New("invalid worker configuration")
-	ErrInvalidWorkerQueues      = errors.New("worker requires at least one queue")
+	// ErrInvalidWorkerConfig is returned when the worker configuration
+	// fails validation.
+	ErrInvalidWorkerConfig = errors.New("invalid worker configuration")
+	// ErrInvalidWorkerQueues is returned when no queues are configured
+	// for the worker.
+	ErrInvalidWorkerQueues = errors.New("worker requires at least one queue")
+	// ErrInvalidWorkerConcurrency is returned when the worker concurrency
+	// is set to zero or a negative value.
 	ErrInvalidWorkerConcurrency = errors.New("worker requires a positive concurrency value")
-	ErrWorkerAlreadyStarted     = errors.New("worker already started")
+	// ErrWorkerAlreadyStarted is returned when [Worker.Start] is called
+	// on a worker that is already running.
+	ErrWorkerAlreadyStarted = errors.New("worker already started")
+	// ErrHandlerAlreadyRegistered is returned when a handler for the
+	// same job type is registered more than once.
 	ErrHandlerAlreadyRegistered = errors.New("handler already registered")
-	ErrWorkerNotFound           = errors.New("worker not found")
+	// ErrWorkerNotFound is returned when a worker cannot be found by
+	// its ID.
+	ErrWorkerNotFound = errors.New("worker not found")
 )
 
 // Redis errors are returned when Redis configuration validation fails.
 var (
-	ErrInvalidRedisConfig      = errors.New("invalid redis configuration")
-	ErrRedisEmptyAddress       = errors.New("address cannot be empty")
+	// ErrInvalidRedisConfig is returned when the Redis configuration
+	// fails validation.
+	ErrInvalidRedisConfig = errors.New("invalid redis configuration")
+	// ErrRedisEmptyAddress is returned when the Redis address is empty.
+	ErrRedisEmptyAddress = errors.New("address cannot be empty")
+	// ErrRedisUnsupportedNetwork is returned when an unsupported
+	// network type is specified in the Redis configuration.
 	ErrRedisUnsupportedNetwork = errors.New("unsupported network type")
-	ErrRedisInvalidAddress     = errors.New("invalid address format")
-	ErrRedisTLSRequired        = errors.New("TLS configuration required for rediss:// connections")
+	// ErrRedisInvalidAddress is returned when the Redis address format
+	// is invalid.
+	ErrRedisInvalidAddress = errors.New("invalid address format")
+	// ErrRedisTLSRequired is returned when a rediss:// URL is used
+	// without providing a TLS configuration.
+	ErrRedisTLSRequired = errors.New("TLS configuration required for rediss:// connections")
+	// ErrRedisClientNotSupported is returned when the Redis client type
+	// is not supported by the manager.
 	ErrRedisClientNotSupported = errors.New("redis client type not supported")
 )
 
 // Manager errors are returned when queue management operations fail.
 var (
-	ErrOperationNotSupported        = errors.New("operation not supported for the given job state")
-	ErrArchivingActiveJobs          = errors.New("cannot archive active jobs directly, cancel first")
-	ErrGroupRequiredForAggregation  = errors.New("group identifier required for aggregating jobs")
+	// ErrOperationNotSupported is returned when the requested operation
+	// is not supported for the given job state.
+	ErrOperationNotSupported = errors.New("operation not supported for the given job state")
+	// ErrArchivingActiveJobs is returned when attempting to archive
+	// jobs that are currently being processed. Cancel them first.
+	ErrArchivingActiveJobs = errors.New("cannot archive active jobs directly, cancel first")
+	// ErrGroupRequiredForAggregation is returned when an aggregating
+	// operation is attempted without specifying a group identifier.
+	ErrGroupRequiredForAggregation = errors.New("group identifier required for aggregating jobs")
+	// ErrUnsupportedJobStateForAction is returned when the job state
+	// does not support the requested action.
 	ErrUnsupportedJobStateForAction = errors.New("unsupported job state for the requested action")
-	ErrQueueNotFound                = errors.New("queue not found")
-	ErrQueueNotEmpty                = errors.New("queue is not empty")
+	// ErrQueueNotFound is returned when the specified queue does not exist.
+	ErrQueueNotFound = errors.New("queue not found")
+	// ErrQueueNotEmpty is returned when attempting to delete a queue
+	// that still contains jobs without using force mode.
+	ErrQueueNotEmpty = errors.New("queue is not empty")
 )
 
 // ErrSkipRetry indicates a specific Asynq framework condition to skip retries and move the job to the archive.
