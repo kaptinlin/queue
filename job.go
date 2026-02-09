@@ -104,7 +104,7 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 
 	opts := j.ConvertToAsynqOptions()
 
-	return asynq.NewTask(j.Type, payloadBytes, opts...), opts, nil
+	return asynq.NewTask(j.Type, payloadBytes), opts, nil
 }
 
 // ConvertToAsynqOptions converts the Job's options into Asynq options.

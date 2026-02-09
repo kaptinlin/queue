@@ -89,9 +89,9 @@ func TestSchedulerRegisterWithInvalidCronSpec(t *testing.T) {
 func TestSchedulerPreEnqueueHook(t *testing.T) {
 	redisConfig := getRedisConfig()
 
-	preEnqueueCalled := false
+	var preEnqueueCalled atomic.Bool
 	preEnqueueHook := func(job *queue.Job) {
-		preEnqueueCalled = true
+		preEnqueueCalled.Store(true)
 		t.Log("PreEnqueueFunc called")
 	}
 
@@ -115,15 +115,15 @@ func TestSchedulerPreEnqueueHook(t *testing.T) {
 
 	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
 
-	assert.True(t, preEnqueueCalled, "Expected PreEnqueueFunc to be called")
+	assert.True(t, preEnqueueCalled.Load(), "Expected PreEnqueueFunc to be called")
 }
 
 func TestSchedulerPostEnqueueHook(t *testing.T) {
 	redisConfig := getRedisConfig()
 
-	postEnqueueCalled := false
+	var postEnqueueCalled atomic.Bool
 	postEnqueueHook := func(job *queue.JobInfo, err error) {
-		postEnqueueCalled = true
+		postEnqueueCalled.Store(true)
 		t.Logf("PostEnqueueFunc called with job: %+v, error: %v", job, err)
 	}
 
@@ -147,7 +147,7 @@ func TestSchedulerPostEnqueueHook(t *testing.T) {
 
 	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
 
-	assert.True(t, postEnqueueCalled, "Expected PostEnqueueFunc to be called")
+	assert.True(t, postEnqueueCalled.Load(), "Expected PostEnqueueFunc to be called")
 }
 
 func TestSchedulerPostEnqueueUsesConfiguredLogger(t *testing.T) {

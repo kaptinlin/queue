@@ -29,25 +29,29 @@ clean:
 
 .PHONY: test
 test:
-	cd tests && go test -v
+	cd tests && go test -v -race
 
 .PHONY: redis
 redis:
-	@echo "🚀 Starting Redis service..."
-	@docker-compose up -d
-	@echo "⏳ Waiting for Redis service to be ready..."
-	@timeout=30; \
-	counter=0; \
-	until docker-compose exec redis redis-cli ping 2>/dev/null | grep -q PONG; do \
-		sleep 1; \
-		counter=$$((counter + 1)); \
-		if [ $$counter -gt $$timeout ]; then \
-			echo "❌ Timeout waiting for Redis service"; \
-			docker-compose down; \
-			exit 1; \
-		fi; \
-	done
-	@echo "✅ Redis service is ready"
+	@if redis-cli ping 2>/dev/null | grep -q PONG; then \
+		echo "✅ Redis is already running"; \
+	else \
+		echo "🚀 Starting Redis service via Docker..."; \
+		docker-compose up -d; \
+		echo "⏳ Waiting for Redis service to be ready..."; \
+		timeout=30; \
+		counter=0; \
+		until docker-compose exec redis redis-cli ping 2>/dev/null | grep -q PONG; do \
+			sleep 1; \
+			counter=$$((counter + 1)); \
+			if [ $$counter -gt $$timeout ]; then \
+				echo "❌ Timeout waiting for Redis service"; \
+				docker-compose down; \
+				exit 1; \
+			fi; \
+		done; \
+		echo "✅ Redis service is ready"; \
+	fi
 
 .PHONY: redis-stop
 redis-stop:
@@ -58,8 +62,6 @@ redis-stop:
 test-with-redis: redis
 	@echo "🧪 Running tests..."
 	@$(MAKE) test
-	@echo "🧹 Cleaning up test environment..."
-	@docker-compose down
 	@echo "✅ Tests completed!"
 
 .PHONY: lint

@@ -17,6 +17,8 @@ type Scheduler struct {
 	taskManager    *asynq.PeriodicTaskManager
 	configProvider ConfigProvider
 	options        SchedulerOptions
+	done           chan struct{} // closed by Stop to unblock Start
+	startErr       chan error    // receives the result of taskManager.Start
 }
 
 // SchedulerOptions contains options for the Scheduler.
@@ -139,6 +141,8 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 		taskManager:    taskManager,
 		configProvider: configProvider,
 		options:        options,
+		done:           make(chan struct{}),
+		startErr:       make(chan error, 1),
 	}, nil
 }
 
@@ -177,12 +181,21 @@ func (s *Scheduler) UnregisterCronJob(identifier string) error {
 }
 
 // Start begins the scheduler to enqueue tasks as per the schedule.
+// Start blocks until the scheduler is shut down via Stop.
 func (s *Scheduler) Start() error {
-	return s.taskManager.Run()
+	if err := s.taskManager.Start(); err != nil {
+		return err
+	}
+	close(s.startErr)
+	<-s.done
+	s.taskManager.Shutdown()
+	return nil
 }
 
 // Stop gracefully shuts down the scheduler.
+// Stop waits for Start to have initialized before issuing the shutdown.
 func (s *Scheduler) Stop() error {
-	s.taskManager.Shutdown()
+	<-s.startErr
+	close(s.done)
 	return nil
 }
