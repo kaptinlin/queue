@@ -3,6 +3,7 @@ package queue
 import (
 	"fmt"
 	"log/slog"
+	"os"
 )
 
 // DefaultLogger provides a default implementation of Logger using slog.
@@ -20,5 +21,5 @@ func (l *DefaultLogger) Warn(args ...interface{})  { slog.Warn(fmt.Sprint(args..
 func (l *DefaultLogger) Error(args ...interface{}) { slog.Error(fmt.Sprint(args...)) }
 func (l *DefaultLogger) Fatal(args ...interface{}) {
 	slog.Error(fmt.Sprint(args...))
-	panic(fmt.Sprint(args...))
+	os.Exit(1)
 }
