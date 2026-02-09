@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	ErrJobAlreadyExists = errors.New("job already exists")
-	ErrorJobNotFound    = errors.New("job not found")
+	ErrJobAlreadyExists  = errors.New("job already exists")
+	ErrConfigJobNotFound = errors.New("job not found")
 )
 
 type ConfigProvider interface {
@@ -59,7 +59,7 @@ func (m *MemoryConfigProvider) UnregisterJob(identifier string) error {
 	defer m.mu.Unlock()
 
 	if _, exists := m.jobs[identifier]; !exists {
-		return ErrorJobNotFound
+		return ErrConfigJobNotFound
 	}
 
 	delete(m.jobs, identifier)

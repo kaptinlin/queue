@@ -2,6 +2,7 @@ package queue
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -77,6 +78,9 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 	if redisConfig == nil {
 		return nil, ErrInvalidRedisConfig
 	}
+	if err := redisConfig.Validate(); err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrInvalidRedisConfig, err)
+	}
 
 	asynqClientOpt := redisConfig.ToAsynqRedisOpt()
 
@@ -138,7 +142,7 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 }
 
 // RegisterCron schedules a new cron job using the job type, payload, and options.
-func (s *Scheduler) RegisterCron(spec, jobType string, payload interface{}, opts ...JobOption) (string, error) {
+func (s *Scheduler) RegisterCron(spec, jobType string, payload any, opts ...JobOption) (string, error) {
 	job := NewJob(jobType, payload, opts...)
 	return s.RegisterCronJob(spec, job)
 }
@@ -155,7 +159,7 @@ func (s *Scheduler) RegisterCronJob(spec string, job *Job) (string, error) {
 }
 
 // RegisterPeriodic schedules a new periodic job using the job type, payload, and options.
-func (s *Scheduler) RegisterPeriodic(interval time.Duration, jobType string, payload interface{}, opts ...JobOption) (string, error) {
+func (s *Scheduler) RegisterPeriodic(interval time.Duration, jobType string, payload any, opts ...JobOption) (string, error) {
 	job := NewJob(jobType, payload, opts...)
 	return s.RegisterPeriodicJob(interval, job)
 }

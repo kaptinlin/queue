@@ -14,7 +14,7 @@ type Job struct {
 	ID           string              `json:"id"`          // Unique identifier for the job.
 	Fingerprint  string              `json:"fingerprint"` // Unique hash for the job based on its type and payload.
 	Type         string              `json:"type"`        // Type of job, used for handler mapping.
-	Payload      interface{}         `json:"payload"`     // Job data.
+	Payload      any                 `json:"payload"`     // Job data.
 	resultWriter *asynq.ResultWriter `json:"-"`           // Result writer for the job.
 	Options      JobOptions          `json:"options"`     // Execution options for the job.
 }
@@ -30,7 +30,7 @@ type JobOptions struct {
 }
 
 // NewJob initializes a new Job with the provided type, payload, and configuration options.
-func NewJob(jobType string, payload interface{}, opts ...JobOption) *Job {
+func NewJob(jobType string, payload any, opts ...JobOption) *Job {
 	job := &Job{
 		Type:    jobType,
 		Payload: payload,
@@ -105,7 +105,7 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 
 // ConvertToAsynqOptions converts the Job's options into Asynq options.
 func (j *Job) ConvertToAsynqOptions() []asynq.Option {
-	opts := make([]asynq.Option, 0)
+	opts := make([]asynq.Option, 0, 6)
 
 	// Apply job options to the Asynq task.
 	if j.Options.Queue != "" {
@@ -147,7 +147,7 @@ func (j *Job) fingerprint() {
 }
 
 // DecodePayload decodes the job payload into a given struct.
-func (j *Job) DecodePayload(v interface{}) error {
+func (j *Job) DecodePayload(v any) error {
 	payloadBytes, err := json.Marshal(j.Payload)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrSerializationFailure, err)
@@ -168,7 +168,7 @@ func (j *Job) SetResultWriter(rw *asynq.ResultWriter) *Job {
 }
 
 // WriteResult writes the result of the job to the result writer.
-func (j *Job) WriteResult(result interface{}) error {
+func (j *Job) WriteResult(result any) error {
 	if j.resultWriter == nil {
 		return ErrResultWriterNotSet
 	}

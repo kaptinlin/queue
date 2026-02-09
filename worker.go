@@ -220,7 +220,7 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 		}
 
 		// Extract payload from the task
-		var payload map[string]interface{}
+		var payload map[string]any
 		if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 			return err
 		}
