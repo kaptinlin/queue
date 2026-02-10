@@ -181,7 +181,7 @@ Tests require Redis and live in `tests/` directory:
 ### Code Organization
 
 - **Core Types**: `client.go`, `worker.go`, `job.go`, `handler.go`, `manager.go`
-- **Configuration**: `redis.go`, `configs.go`, `logger.go`
+- **Configuration**: `redis.go`, `configs.go`, `logger.go`, `default_logger.go`
 - **Support**: `errors.go`, `state.go`, `info.go`, `middleware.go`, `group.go`
 - **Scheduling**: `scheduler.go`
 - **Tests**: `tests/*.go` (uses testify)
@@ -224,7 +224,7 @@ Results require `WithRetention()` option on job to persist.
 
 - **Go Version**: 1.25 or higher
 - **Redis**: Any version compatible with go-redis v9 and Asynq
-- **golangci-lint**: Version 2.4.0 (managed via `.golangci.version`)
+- **golangci-lint**: Version 2.7.2 (managed via `.golangci.version`)
 
 ## Important Gotchas
 

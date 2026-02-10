@@ -1,0 +1,42 @@
+# Ralphy Configuration
+# https://github.com/michaelshimeles/ralphy
+
+# Project info
+project:
+  name: "queue"
+  language: "Go"
+  framework: "Asynq"
+  description: "Distributed job queue processing library for Go, built on Asynq and Redis. Provides automatic error logging, custom error handling, retries, priority queues, rate limiting, job retention, and distributed worker architecture."
+
+# Commands (from Makefile)
+commands:
+  test: "make test-with-redis"
+  lint: "make lint"
+  build: "go build ./..."
+
+# Rules - instructions the AI MUST follow
+# These are injected into every prompt
+rules:
+  - "Follow SOLID, KISS (Keep It Simple, Stupid), DRY (Don't Repeat Yourself), and YAGNI (You Ain't Gonna Need It) principles."
+  - "Maximize code reuse whenever possible."
+  - "All public types and methods must have complete GoDoc comments with examples."
+  - "All tests must pass with -race flag. Target >90% test coverage."
+  - "Use errors.Join() for multi-error aggregation and fmt.Errorf('%w', err) for error wrapping."
+  - "Use Go 1.25 modern features: min(), max(), slices package, maps package, strings.Cut(), for range N syntax."
+  - "Use strings.Builder with pre-allocation for string processing. Pre-allocate slices with make([]T, 0, capacity) when size is predictable."
+  - "Never add sync.Pool without profiling evidence. Never add log/slog dependencies in library code."
+  - "Use functional options pattern for all configurable components (Client, Worker, Handler, Scheduler)."
+  - "Always log errors before returning. Use the dual error handling pattern: automatic logging + optional custom handlers."
+  - "Tests live in the tests/ directory and require Redis. Use testify for assertions. Clean up jobs/queues after tests."
+  - "Handler registration must specify queue via WithJobQueue(). Queue must match one configured in WithWorkerQueue()."
+  - "Rate limiting is hierarchical: worker-level (global) and handler-level (per-handler). Both must pass."
+  - "Job payloads use github.com/go-json-experiment/json, not the standard library encoder."
+  - "Follow [Google Go Best Practices](https://google.github.io/go-style/best-practices)"
+  - "Follow [Google Go Decisions](https://google.github.io/go-style/decisions)"
+  - "Follow [Google Go Formatting](https://google.github.io/go-style/formatting)"
+
+# Boundaries - files/folders the AI should not modify
+boundaries:
+  never_touch:
+    - "bin/**"
+    - "go.sum"

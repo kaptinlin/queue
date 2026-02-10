@@ -152,7 +152,7 @@ Learn more about the library's advanced features by exploring our documentation 
 - [Rate Limiting](./docs/rate_limiting.md)
 - [Job Retention and Results](./docs/retention_results.md)
 - [Job Retries](./docs/retries.md)
-- [Timeouts and Deadlines](./docs/timeouts_deadline.md)
+- [Timeouts and Deadlines](./docs/timeouts_deadlines.md)
 - [Scheduler](./docs/scheduler.md)
 - [Config Provider for Scheduler](./docs/config_provider.md)
 - [Using Middleware](./docs/middleware.md)
