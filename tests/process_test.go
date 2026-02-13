@@ -31,8 +31,6 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 	// Define the job payload and enqueue a new job.
 	payload := TestJobPayload{Message: "Hello, Test Queue!"}
 	job := queue.NewJob(testJobType, payload)
-	_, err = client.EnqueueJob(job)
-	require.NoError(t, err, "Failed to enqueue job")
 
 	// Initialize the worker responsible for processing jobs.
 	worker, err := queue.NewWorker(redisConfig)
@@ -40,7 +38,6 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 
 	// Use a WaitGroup to wait for the handler execution.
 	var wg sync.WaitGroup
-	wg.Add(1) // Expecting one job to be processed
 
 	// Define and register the job handler.
 	testJobHandler := func(ctx context.Context, job *queue.Job) error {
@@ -70,6 +67,11 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 	defer func() {
 		assert.NoError(t, worker.Stop(), "Failed to stop worker")
 	}() // Ensure the worker is stopped after the test.
+
+	// Enqueue the job after worker is ready
+	wg.Add(1) // Expecting one job to be processed
+	_, err = client.EnqueueJob(job)
+	require.NoError(t, err, "Failed to enqueue job")
 
 	// Wait for the job handler to execute.
 	wg.Wait()

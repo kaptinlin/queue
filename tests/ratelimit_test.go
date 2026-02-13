@@ -33,11 +33,10 @@ func TestWorkerRateLimiterBlocksBeforeHandler(t *testing.T) {
 
 	jobType := "ratelimit_worker_test"
 	var wg sync.WaitGroup
-	wg.Add(1)
 
 	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+		defer wg.Done()
 		handlerCalls.Add(1)
-		wg.Done()
 		return nil
 	})
 	require.NoError(t, err)
@@ -60,6 +59,7 @@ func TestWorkerRateLimiterBlocksBeforeHandler(t *testing.T) {
 	}()
 
 	// Enqueue first job — should be processed.
+	wg.Add(1)
 	_, err = client.Enqueue(jobType, map[string]any{"seq": 1})
 	require.NoError(t, err)
 
@@ -83,11 +83,10 @@ func TestHandlerRateLimiterIndependentOfWorker(t *testing.T) {
 
 	jobType := "ratelimit_handler_only_test"
 	var wg sync.WaitGroup
-	wg.Add(1)
 
 	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+		defer wg.Done()
 		processed.Add(1)
-		wg.Done()
 		return nil
 	}, queue.WithRateLimiter(handlerLimiter))
 	require.NoError(t, err)
@@ -110,6 +109,7 @@ func TestHandlerRateLimiterIndependentOfWorker(t *testing.T) {
 	}()
 
 	// Enqueue first job — passes handler limiter.
+	wg.Add(1)
 	_, err = client.Enqueue(jobType, map[string]any{"seq": 1})
 	require.NoError(t, err)
 
@@ -139,11 +139,10 @@ func TestDualRateLimiterWorkerBlocksFirst(t *testing.T) {
 
 	jobType := "ratelimit_dual_worker_first_test"
 	var wg sync.WaitGroup
-	wg.Add(1)
 
 	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+		defer wg.Done()
 		handlerCalls.Add(1)
-		wg.Done()
 		return nil
 	}, queue.WithRateLimiter(handlerLimiter))
 	require.NoError(t, err)
@@ -166,6 +165,7 @@ func TestDualRateLimiterWorkerBlocksFirst(t *testing.T) {
 	}()
 
 	// First job passes both limiters.
+	wg.Add(1)
 	_, err = client.Enqueue(jobType, map[string]any{"seq": 1})
 	require.NoError(t, err)
 
@@ -226,11 +226,10 @@ func TestDualRateLimiterBothAllow(t *testing.T) {
 
 	jobType := "ratelimit_dual_both_allow_test"
 	var wg sync.WaitGroup
-	wg.Add(jobCount)
 
 	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+		defer wg.Done()
 		processed.Add(1)
-		wg.Done()
 		return nil
 	}, queue.WithRateLimiter(handlerLimiter))
 	require.NoError(t, err)
@@ -253,6 +252,7 @@ func TestDualRateLimiterBothAllow(t *testing.T) {
 	}()
 
 	for i := range jobCount {
+		wg.Add(1)
 		_, err = client.Enqueue(jobType, map[string]any{"seq": i})
 		require.NoError(t, err)
 	}
@@ -293,10 +293,9 @@ func TestDualRateLimiterErrorHandlerReceivesRateLimitError(t *testing.T) {
 
 	jobType := "ratelimit_error_handler_test"
 	var wg sync.WaitGroup
-	wg.Add(1)
 
 	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
-		wg.Done()
+		defer wg.Done()
 		return nil
 	}, queue.WithRateLimiter(handlerLimiter))
 	require.NoError(t, err)
@@ -319,6 +318,7 @@ func TestDualRateLimiterErrorHandlerReceivesRateLimitError(t *testing.T) {
 	}()
 
 	// First job passes the handler limiter.
+	wg.Add(1)
 	_, err = client.Enqueue(jobType, map[string]any{"seq": 1})
 	require.NoError(t, err)
 	wg.Wait()

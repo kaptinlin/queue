@@ -148,7 +148,6 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 
 	// Prepare a WaitGroup for job completion synchronization
 	var wg sync.WaitGroup
-	wg.Add(1)
 
 	// Define expected result
 	expectedResult := map[string]interface{}{
@@ -187,6 +186,7 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 	// Enqueue the job
 	payload := TestJobPayload{Message: "Test WriteResult"}
 	job := queue.NewJob(testJobType, payload, queue.WithRetention(24*time.Hour))
+	wg.Add(1)
 	jobID, err := client.EnqueueJob(job)
 	require.NoError(t, err, "Failed to enqueue job")
 
