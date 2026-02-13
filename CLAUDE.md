@@ -222,9 +222,9 @@ Results require `WithRetention()` option on job to persist.
 
 ## Environment Requirements
 
-- **Go Version**: 1.25 or higher
+- **Go Version**: 1.26 or higher
 - **Redis**: Any version compatible with go-redis v9 and Asynq
-- **golangci-lint**: Version 2.7.2 (managed via `.golangci.version`)
+- **golangci-lint**: Version 2.9.0 (managed via `.golangci.version`)
 
 ## Important Gotchas
 

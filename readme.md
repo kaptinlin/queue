@@ -6,7 +6,7 @@ This library offers a robust and flexible solution for managing and processing q
 
 ### Installation
 
-Ensure your Go environment is ready (requires Go version 1.25 or higher), then install the library:
+Ensure your Go environment is ready (requires Go version 1.26 or higher), then install the library:
 
 ```bash
 go get -u github.com/kaptinlin/queue
