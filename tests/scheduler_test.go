@@ -20,20 +20,20 @@ type mockLogger struct {
 
 type mockLogEntry struct {
 	level string
-	args  []interface{}
+	args  []any
 }
 
-func (l *mockLogger) log(level string, args ...interface{}) {
+func (l *mockLogger) log(level string, args ...any) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.messages = append(l.messages, mockLogEntry{level: level, args: args})
 }
 
-func (l *mockLogger) Debug(args ...interface{}) { l.log("debug", args...) }
-func (l *mockLogger) Info(args ...interface{})  { l.log("info", args...) }
-func (l *mockLogger) Warn(args ...interface{})  { l.log("warn", args...) }
-func (l *mockLogger) Error(args ...interface{}) { l.log("error", args...) }
-func (l *mockLogger) Fatal(args ...interface{}) { l.log("fatal", args...) }
+func (l *mockLogger) Debug(args ...any) { l.log("debug", args...) }
+func (l *mockLogger) Info(args ...any)  { l.log("info", args...) }
+func (l *mockLogger) Warn(args ...any)  { l.log("warn", args...) }
+func (l *mockLogger) Error(args ...any) { l.log("error", args...) }
+func (l *mockLogger) Fatal(args ...any) { l.log("fatal", args...) }
 
 func (l *mockLogger) hasLevel(level string) bool {
 	l.mu.Lock()
@@ -99,7 +99,7 @@ func TestSchedulerPreEnqueueHook(t *testing.T) {
 	require.NoError(t, err, "Failed to create scheduler with pre enqueue hook")
 
 	jobType := "pre_enqueue_test"
-	payload := map[string]interface{}{"data": "pre"}
+	payload := map[string]any{"data": "pre"}
 
 	_, err = scheduler.RegisterCron("@every 1s", jobType, payload)
 	require.NoError(t, err, "Failed to register cron job")
@@ -131,7 +131,7 @@ func TestSchedulerPostEnqueueHook(t *testing.T) {
 	require.NoError(t, err, "Failed to create scheduler with post enqueue hook")
 
 	jobType := "post_enqueue_test"
-	payload := map[string]interface{}{"data": "post"}
+	payload := map[string]any{"data": "post"}
 
 	_, err = scheduler.RegisterCron("@every 1s", jobType, payload)
 	require.NoError(t, err, "Failed to register cron job")
@@ -159,7 +159,7 @@ func TestSchedulerPostEnqueueUsesConfiguredLogger(t *testing.T) {
 	)
 	require.NoError(t, err, "Failed to create scheduler with custom logger")
 
-	_, err = scheduler.RegisterCron("@every 1s", "logger_test", map[string]interface{}{"key": "value"})
+	_, err = scheduler.RegisterCron("@every 1s", "logger_test", map[string]any{"key": "value"})
 	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {

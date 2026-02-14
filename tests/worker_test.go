@@ -92,7 +92,7 @@ func TestWorkerWithWorkerErrorHandler(t *testing.T) {
 
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err, "Failed to create client")
-	_, err = client.Enqueue(jobType, map[string]interface{}{"key": "value"})
+	_, err = client.Enqueue(jobType, map[string]any{"key": "value"})
 	require.NoError(t, err, "Failed to enqueue job")
 
 	time.Sleep(2 * time.Second) // Adjusted wait time for job processing

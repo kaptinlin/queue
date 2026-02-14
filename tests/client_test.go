@@ -20,7 +20,7 @@ func TestClientEnqueue(t *testing.T) {
 	}()
 
 	jobType := "testEnqueueJob"
-	payload := map[string]interface{}{"key": "value"}
+	payload := map[string]any{"key": "value"}
 
 	_, err = client.Enqueue(jobType, payload)
 	require.NoError(t, err, "Enqueue failed")
@@ -36,7 +36,7 @@ func TestClientEnqueueJob(t *testing.T) {
 	}()
 
 	jobType := "testEnqueueJobJob"
-	payload := map[string]interface{}{"key": "value"}
+	payload := map[string]any{"key": "value"}
 	job := queue.NewJob(jobType, payload)
 
 	_, err = client.EnqueueJob(job)
@@ -67,7 +67,7 @@ func TestClientWithClientErrorHandler(t *testing.T) {
 
 	// Create a job with an invalid configuration that is known to cause ConvertToAsynqTask to return an error
 	jobType := "" // Intentionally left blank to trigger an error in ConvertToAsynqTask
-	payload := map[string]interface{}{"key": "value"}
+	payload := map[string]any{"key": "value"}
 
 	// Attempt to enqueue the job, which should fail at the job conversion step
 	_, err = client.Enqueue(jobType, payload)

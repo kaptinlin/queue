@@ -8,7 +8,7 @@ import (
 )
 
 func BenchmarkJobCreation(b *testing.B) {
-	payload := map[string]interface{}{"key": "value", "count": 123}
+	payload := map[string]any{"key": "value", "count": 123}
 
 	for b.Loop() {
 		_ = queue.NewJob("test_job", payload)
@@ -16,7 +16,7 @@ func BenchmarkJobCreation(b *testing.B) {
 }
 
 func BenchmarkJobCreationWithOptions(b *testing.B) {
-	payload := map[string]interface{}{"key": "value", "count": 123}
+	payload := map[string]any{"key": "value", "count": 123}
 
 	for b.Loop() {
 		_ = queue.NewJob("test_job", payload,
@@ -27,7 +27,7 @@ func BenchmarkJobCreationWithOptions(b *testing.B) {
 }
 
 func BenchmarkJobConvertToAsynqTask(b *testing.B) {
-	payload := map[string]interface{}{"key": "value", "count": 123}
+	payload := map[string]any{"key": "value", "count": 123}
 	job := queue.NewJob("test_job", payload, queue.WithQueue("default"))
 
 	for b.Loop() {
@@ -53,7 +53,7 @@ func BenchmarkHandlerProcess(b *testing.B) {
 		return nil
 	})
 
-	job := queue.NewJob("test_job", map[string]interface{}{"key": "value"})
+	job := queue.NewJob("test_job", map[string]any{"key": "value"})
 	ctx := context.Background()
 
 	for b.Loop() {
@@ -70,7 +70,7 @@ func BenchmarkJobDecodePayload(b *testing.B) {
 		Count int    `json:"count"`
 	}
 
-	payload := map[string]interface{}{"key": "value", "count": 123}
+	payload := map[string]any{"key": "value", "count": 123}
 	job := queue.NewJob("test_job", payload)
 
 	for b.Loop() {
@@ -90,7 +90,7 @@ func BenchmarkClientEnqueue(b *testing.B) {
 	}
 	defer func() { _ = client.Stop() }()
 
-	payload := map[string]interface{}{"key": "value"}
+	payload := map[string]any{"key": "value"}
 
 	for b.Loop() {
 		_, err := client.Enqueue("benchmark_job", payload)
@@ -109,7 +109,7 @@ func BenchmarkClientEnqueueJob(b *testing.B) {
 	defer func() { _ = client.Stop() }()
 
 	for b.Loop() {
-		job := queue.NewJob("benchmark_job", map[string]interface{}{"key": "value"})
+		job := queue.NewJob("benchmark_job", map[string]any{"key": "value"})
 		_, err := client.EnqueueJob(job)
 		if err != nil {
 			b.Fatal(err)

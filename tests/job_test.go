@@ -15,7 +15,7 @@ import (
 
 func TestNewJob(t *testing.T) {
 	jobType := "testJob"
-	payload := map[string]interface{}{"key": "value"}
+	payload := map[string]any{"key": "value"}
 	job := queue.NewJob(jobType, payload)
 
 	assert.Equal(t, jobType, job.Type, "Job type should match")
@@ -24,7 +24,7 @@ func TestNewJob(t *testing.T) {
 
 func TestJob_ConvertToAsynqTask(t *testing.T) {
 	jobType := "testConversion"
-	payload := map[string]interface{}{"key": "value"}
+	payload := map[string]any{"key": "value"}
 	job := queue.NewJob(jobType, payload)
 
 	task, _, err := job.ConvertToAsynqTask()
@@ -32,7 +32,7 @@ func TestJob_ConvertToAsynqTask(t *testing.T) {
 
 	assert.Equal(t, jobType, task.Type(), "Task type should match job type")
 
-	var taskPayload map[string]interface{}
+	var taskPayload map[string]any
 	err = json.Unmarshal(task.Payload(), &taskPayload)
 	require.NoError(t, err, "json.Unmarshal should not fail")
 
@@ -150,7 +150,7 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Define expected result
-	expectedResult := map[string]interface{}{
+	expectedResult := map[string]any{
 		"status": "completed",
 		"detail": "Job processed successfully",
 	}
@@ -202,7 +202,7 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 	require.NoError(t, err, "Failed to get job info")
 
 	// Deserialize the job result to verify it
-	var result map[string]interface{}
+	var result map[string]any
 	err = json.Unmarshal([]byte(*jobInfo.Result), &result)
 	require.NoError(t, err, "Failed to unmarshal job result")
 

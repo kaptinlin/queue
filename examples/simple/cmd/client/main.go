@@ -18,7 +18,7 @@ func main() {
 	}
 
 	jobType := "example_job"
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"input": "Hello, Queue!",
 	}
 	_, err = client.Enqueue(jobType, payload, queue.WithQueue("critical"), queue.WithRetention(time.Hour))

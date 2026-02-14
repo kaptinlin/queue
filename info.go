@@ -44,7 +44,7 @@ type ActiveJobInfo struct {
 	JobPayload string    `json:"job_payload"`
 	Queue      string    `json:"queue"`
 	StartedAt  time.Time `json:"started_at"`
-	DeadlineAt time.Time `json:"deadline_at,omitempty"`
+	DeadlineAt time.Time `json:"deadline_at"`
 }
 
 // Convert Asynq WorkerInfo to ActiveJobInfo.

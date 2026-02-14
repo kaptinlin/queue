@@ -62,8 +62,8 @@ func TestGroupMiddleware(t *testing.T) {
 	// Enqueue jobs to be processed by the handler within the email group.
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err, "Failed to create client")
-	for i := 0; i < 5; i++ {
-		_, err := client.Enqueue(jobType, map[string]interface{}{"key": "value"})
+	for range 5 {
+		_, err := client.Enqueue(jobType, map[string]any{"key": "value"})
 		require.NoError(t, err, "Failed to enqueue job")
 	}
 

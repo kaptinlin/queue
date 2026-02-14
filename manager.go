@@ -586,8 +586,8 @@ func (s *Manager) fetchQueueLocations() ([]*QueueLocation, error) {
 // parseRedisInfo parses the INFO command's output into a key-value map.
 func parseRedisInfo(infoStr string) map[string]string {
 	info := make(map[string]string)
-	lines := strings.Split(infoStr, "\r\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(infoStr, "\r\n")
+	for line := range lines {
 		if key, value, ok := strings.Cut(line, ":"); ok {
 			info[key] = value
 		}
