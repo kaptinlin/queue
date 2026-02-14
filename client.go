@@ -8,7 +8,7 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// Client encapsulates an Asynq client instance with custom error handling and job retention settings.
+// Client encapsulates an asynq.Client instance with custom error handling and job retention settings.
 type Client struct {
 	asynqClient  *asynq.Client
 	errorHandler ClientErrorHandler
@@ -88,7 +88,7 @@ func (c *Client) Enqueue(jobType string, payload any, opts ...JobOption) (string
 	return c.EnqueueJob(job)
 }
 
-// EnqueueJob adds a job to the queue based on the provided Job instance.
+// EnqueueJob adds a job to the queue.
 func (c *Client) EnqueueJob(job *Job) (string, error) {
 	task, opts, err := job.ConvertToAsynqTask()
 	if err != nil {
@@ -129,7 +129,7 @@ func (c *Client) handleJobError(err error, job *Job, msg string) {
 	}
 }
 
-// Stop terminates the Asynq client connection, releasing resources.
+// Stop terminates the client connection, releasing resources.
 func (c *Client) Stop() error {
 	return c.asynqClient.Close()
 }

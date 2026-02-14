@@ -12,7 +12,7 @@ import (
 // ErrInvalidCronSpec is returned when a cron specification string cannot be parsed.
 var ErrInvalidCronSpec = errors.New("invalid cron spec")
 
-// Scheduler manages job scheduling with Asynq.
+// Scheduler manages periodic job scheduling.
 type Scheduler struct {
 	taskManager    *asynq.PeriodicTaskManager
 	configProvider ConfigProvider

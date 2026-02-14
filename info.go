@@ -6,7 +6,7 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// WorkerInfo wraps detailed information about an Asynq server, which we treat as a "worker."
+// WorkerInfo contains detailed information about a worker server.
 type WorkerInfo struct {
 	ID             string           `json:"id"`
 	Host           string           `json:"host"`
@@ -19,7 +19,7 @@ type WorkerInfo struct {
 	ActiveJobs     []*ActiveJobInfo `json:"active_jobs"`
 }
 
-// Convert Asynq ServerInfo to WorkerInfo.
+// toWorkerInfo converts asynq.ServerInfo to WorkerInfo.
 func toWorkerInfo(info *asynq.ServerInfo) *WorkerInfo {
 	if info == nil {
 		return nil
@@ -37,7 +37,7 @@ func toWorkerInfo(info *asynq.ServerInfo) *WorkerInfo {
 	}
 }
 
-// ActiveJobInfo wraps detailed information about a job currently being processed by a worker.
+// ActiveJobInfo contains information about a job currently being processed.
 type ActiveJobInfo struct {
 	JobID      string    `json:"job_id"`
 	JobType    string    `json:"job_type"`
@@ -47,7 +47,7 @@ type ActiveJobInfo struct {
 	DeadlineAt time.Time `json:"deadline_at"`
 }
 
-// Convert Asynq WorkerInfo to ActiveJobInfo.
+// toActiveJobInfo converts asynq.WorkerInfo to ActiveJobInfo.
 func toActiveJobInfo(info *asynq.WorkerInfo) *ActiveJobInfo {
 	if info == nil {
 		return nil
@@ -62,7 +62,7 @@ func toActiveJobInfo(info *asynq.WorkerInfo) *ActiveJobInfo {
 	}
 }
 
-// Convert a slice of Asynq WorkerInfo to a slice of ActiveJobInfo.
+// toActiveJobInfoList converts a slice of asynq.WorkerInfo to ActiveJobInfo.
 func toActiveJobInfoList(infos []*asynq.WorkerInfo) []*ActiveJobInfo {
 	activeJobs := make([]*ActiveJobInfo, 0, len(infos))
 	for _, info := range infos {
@@ -71,7 +71,7 @@ func toActiveJobInfoList(infos []*asynq.WorkerInfo) []*ActiveJobInfo {
 	return activeJobs
 }
 
-// QueueInfo includes detailed queue information.
+// QueueInfo contains detailed queue information.
 type QueueInfo struct {
 	Queue       string        `json:"queue"`
 	MemoryUsage int64         `json:"memory_usage"`
@@ -92,7 +92,7 @@ type QueueInfo struct {
 	Timestamp   time.Time     `json:"timestamp"`
 }
 
-// Convert Asynq QueueInfo to QueueInfo.
+// toQueueInfo converts asynq.QueueInfo to QueueInfo.
 func toQueueInfo(info *asynq.QueueInfo) *QueueInfo {
 	if info == nil {
 		return nil
@@ -118,7 +118,7 @@ func toQueueInfo(info *asynq.QueueInfo) *QueueInfo {
 	}
 }
 
-// QueueDailyStats includes detailed daily statistics for a queue.
+// QueueDailyStats contains daily statistics for a queue.
 type QueueDailyStats struct {
 	Queue     string    `json:"queue"`
 	Processed int       `json:"processed"`
@@ -127,7 +127,7 @@ type QueueDailyStats struct {
 	Date      time.Time `json:"date"`
 }
 
-// Convert Asynq QueueDailyStats to our QueueDailyStats structure.
+// toQueueDailyStats converts asynq.DailyStats to QueueDailyStats.
 func toQueueDailyStats(s *asynq.DailyStats) *QueueDailyStats {
 	if s == nil {
 		return nil
@@ -141,7 +141,7 @@ func toQueueDailyStats(s *asynq.DailyStats) *QueueDailyStats {
 	}
 }
 
-// JobInfo includes detailed information for a job, mirroring relevant parts of asynq's TaskInfo and WorkerInfo for active jobs.
+// JobInfo contains detailed information for a job.
 type JobInfo struct {
 	ID            string     `json:"id"`
 	Type          string     `json:"type"`
@@ -164,8 +164,7 @@ type JobInfo struct {
 	Result *string `json:"result,omitempty"`
 }
 
-// toJobInfo converts asynq.TaskInfo and optional asynq.WorkerInfo (for active tasks) to a JobInfo.
-// WorkerInfo is nil for non-active tasks.
+// toJobInfo converts asynq.TaskInfo and optional asynq.WorkerInfo to JobInfo.
 func toJobInfo(ti *asynq.TaskInfo, wi *asynq.WorkerInfo) *JobInfo {
 	if ti == nil {
 		return nil

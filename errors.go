@@ -111,7 +111,7 @@ var (
 	ErrQueueNotEmpty = errors.New("queue is not empty")
 )
 
-// ErrSkipRetry indicates a specific Asynq framework condition to skip retries and move the job to the archive.
+// ErrSkipRetry indicates a condition to skip retries and move the job to the archive.
 var ErrSkipRetry = asynq.SkipRetry
 
 // NewSkipRetryError creates and wraps a SkipRetry error with a custom message.

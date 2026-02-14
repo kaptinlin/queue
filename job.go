@@ -87,7 +87,7 @@ func WithDeadline(deadline *time.Time) JobOption {
 	return func(j *Job) { j.Options.Deadline = deadline }
 }
 
-// ConvertToAsynqTask converts the Job into an Asynq task, ready for enqueueing.
+// ConvertToAsynqTask converts the Job into an asynq.Task, ready for enqueueing.
 func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 	if j.Type == "" {
 		return nil, nil, ErrNoJobTypeSpecified
@@ -107,7 +107,7 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 	return asynq.NewTask(j.Type, payloadBytes), opts, nil
 }
 
-// ConvertToAsynqOptions converts the Job's options into Asynq options.
+// ConvertToAsynqOptions converts the Job's options into asynq.Option slice.
 func (j *Job) ConvertToAsynqOptions() []asynq.Option {
 	opts := make([]asynq.Option, 0, 6)
 

@@ -28,7 +28,7 @@ const (
 // DefaultQueues defines default queue names and their priorities.
 var DefaultQueues = map[string]int{DefaultQueue: 1}
 
-// Worker represents a worker that processes tasks using the asynq package.
+// Worker processes tasks from queues.
 type Worker struct {
 	asynqServer  *asynq.Server
 	inspector    *asynq.Inspector
@@ -186,7 +186,7 @@ func (w *Worker) Stop() error {
 	return nil
 }
 
-// setupAsynqServer initializes the Asynq server and inspector based on the provided Redis configuration and worker configuration.
+// setupAsynqServer initializes the asynq server and inspector.
 func (w *Worker) setupAsynqServer(redisConfig *RedisConfig, config *WorkerConfig) {
 	asynqRedisOpt := redisConfig.ToAsynqRedisOpt()
 
@@ -211,7 +211,7 @@ func (w *Worker) setupHandlers(mux *asynq.ServeMux) {
 	}
 }
 
-// makeHandlerFunc creates a task handling function for the Asynq server, applying rate limiting and error handling.
+// makeHandlerFunc creates a task handling function, applying rate limiting and error handling.
 func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, task *asynq.Task) error {
 	finalHandler := handler.Process
 	for i := len(w.middlewares) - 1; i >= 0; i-- {
@@ -265,7 +265,7 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 	}
 }
 
-// retryDelayFunc determines the delay before retrying a task after failure, using custom logic or falling back to Asynq's default.
+// retryDelayFunc determines the delay before retrying a task after failure.
 func (w *Worker) retryDelayFunc(count int, err error, task *asynq.Task) time.Duration {
 	if rateLimitErr, ok := errors.AsType[*ErrRateLimit](err); ok {
 		return rateLimitErr.RetryAfter
