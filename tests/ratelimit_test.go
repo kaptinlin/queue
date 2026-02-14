@@ -200,8 +200,8 @@ func TestDualRateLimiterHandlerBlocksSecond(t *testing.T) {
 
 	// Second call should be rate-limited by the handler limiter.
 	err = handler.Process(context.Background(), job)
-	var rateLimitErr *queue.ErrRateLimit
-	require.True(t, errors.As(err, &rateLimitErr),
+	rateLimitErr, ok := errors.AsType[*queue.ErrRateLimit](err)
+	require.True(t, ok,
 		"second call should return ErrRateLimit from handler limiter")
 	assert.Equal(t, queue.DefaultRateLimitRetryAfter, rateLimitErr.RetryAfter,
 		"RetryAfter should match DefaultRateLimitRetryAfter")

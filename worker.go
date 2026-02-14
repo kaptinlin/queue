@@ -267,8 +267,7 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 
 // retryDelayFunc determines the delay before retrying a task after failure, using custom logic or falling back to Asynq's default.
 func (w *Worker) retryDelayFunc(count int, err error, task *asynq.Task) time.Duration {
-	var rateLimitErr *ErrRateLimit
-	if errors.As(err, &rateLimitErr) {
+	if rateLimitErr, ok := errors.AsType[*ErrRateLimit](err); ok {
 		return rateLimitErr.RetryAfter
 	}
 

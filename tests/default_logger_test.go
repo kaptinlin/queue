@@ -37,7 +37,7 @@ func TestDefaultLoggerFatalExitsWithCode1(t *testing.T) {
 	// The subprocess should have exited with code 1.
 	require.Error(t, err, "expected Fatal to cause a non-zero exit")
 
-	var exitErr *exec.ExitError
-	require.True(t, errors.As(err, &exitErr), "expected *exec.ExitError")
+	exitErr, ok := errors.AsType[*exec.ExitError](err)
+	require.True(t, ok, "expected *exec.ExitError")
 	assert.Equal(t, 1, exitErr.ExitCode(), "expected exit code 1")
 }

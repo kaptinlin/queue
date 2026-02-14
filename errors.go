@@ -138,6 +138,6 @@ func NewErrRateLimit(retryAfter time.Duration) *ErrRateLimit {
 
 // IsErrRateLimit checks if the provided error is or wraps an ErrRateLimit error.
 func IsErrRateLimit(err error) bool {
-	var rateLimitErr *ErrRateLimit
-	return errors.As(err, &rateLimitErr)
+	_, ok := errors.AsType[*ErrRateLimit](err)
+	return ok
 }

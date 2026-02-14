@@ -84,6 +84,6 @@ func TestHandlerProcessWithRateLimiter(t *testing.T) {
 
 	// The second call should be limited
 	err = handler.Process(context.Background(), job)
-	var rateLimitError *queue.ErrRateLimit
-	assert.True(t, errors.As(err, &rateLimitError), "Process() should return ErrRateLimit error")
+	_, ok := errors.AsType[*queue.ErrRateLimit](err)
+	assert.True(t, ok, "Process() should return ErrRateLimit error")
 }
