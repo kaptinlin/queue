@@ -34,7 +34,7 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 		return nil, ErrInvalidRedisConfig
 	}
 	if err := redisConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidRedisConfig, err)
+		return nil, fmt.Errorf("invalid redis config: %w", err)
 	}
 
 	asynqClient := asynq.NewClient(redisConfig.ToAsynqRedisOpt())

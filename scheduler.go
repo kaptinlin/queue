@@ -82,7 +82,7 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 		return nil, ErrInvalidRedisConfig
 	}
 	if err := redisConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("%w: %w", ErrInvalidRedisConfig, err)
+		return nil, fmt.Errorf("invalid redis config: %w", err)
 	}
 
 	asynqClientOpt := redisConfig.ToAsynqRedisOpt()
