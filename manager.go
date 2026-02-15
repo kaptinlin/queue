@@ -165,12 +165,10 @@ func (s *Manager) ListJobsByState(queue string, state JobState, size, page int) 
 		return nil, ErrInvalidJobState
 	}
 
-	// Handle active jobs separately to attach WorkerInfo.
 	if state == StateActive {
 		return s.ListActiveJobs(queue, size, page)
 	}
 
-	// For all other states, list jobs without WorkerInfo.
 	var tasks []*asynq.TaskInfo
 	var err error
 	switch state { //nolint:exhaustive
@@ -208,7 +206,6 @@ func (s *Manager) ListActiveJobs(queue string, size, page int) ([]*JobInfo, erro
 		return nil, err
 	}
 
-	// Retrieve servers to map tasks to their corresponding active workers.
 	servers, err := s.inspector.Servers()
 	if err != nil {
 		return nil, err
@@ -223,7 +220,6 @@ func (s *Manager) ListActiveJobs(queue string, size, page int) ([]*JobInfo, erro
 		}
 	}
 
-	// Convert tasks to JobInfo and attach WorkerInfo for active jobs.
 	jobInfos := make([]*JobInfo, len(tasks))
 	for i, task := range tasks {
 		wi := workerInfoMap[task.ID]
@@ -241,21 +237,18 @@ func (s *Manager) GetJobInfo(queue, jobID string) (*JobInfo, error) {
 		}
 		return nil, err
 	}
-
 	return toJobInfo(taskInfo, nil), nil
 }
 
 // RunJob triggers immediate execution of a job with the specified ID.
 func (s *Manager) RunJob(queue, jobID string) error {
 	err := s.inspector.RunTask(queue, jobID)
-
 	if err != nil {
 		if errors.Is(err, asynq.ErrTaskNotFound) {
 			return ErrJobNotFound
 		}
 		return err
 	}
-
 	return nil
 }
 
@@ -320,14 +313,12 @@ func (s *Manager) BatchRunJobs(queue string, jobIDs []string) ([]string, []strin
 // ArchiveJob moves a job with the specified ID to the archive.
 func (s *Manager) ArchiveJob(queue, jobID string) error {
 	err := s.inspector.ArchiveTask(queue, jobID)
-
 	if err != nil {
 		if errors.Is(err, asynq.ErrTaskNotFound) {
 			return ErrJobNotFound
 		}
 		return err
 	}
-
 	return nil
 }
 
@@ -342,21 +333,15 @@ func (s *Manager) ArchiveJobsByState(queue string, state JobState) (int, error) 
 	switch state {
 	case StatePending:
 		count, err = s.inspector.ArchiveAllPendingTasks(queue)
-	case StateArchived:
-		// It does not make sense to archive already archived jobs.
-		return 0, ErrOperationNotSupported
-	case StateCompleted:
-		// Directly archiving completed jobs may not be supported depending on the system design.
-		return 0, ErrOperationNotSupported
 	case StateScheduled:
 		count, err = s.inspector.ArchiveAllScheduledTasks(queue)
 	case StateRetry:
 		count, err = s.inspector.ArchiveAllRetryTasks(queue)
+	case StateArchived, StateCompleted:
+		return 0, ErrOperationNotSupported
 	case StateActive:
-		// Archiving active jobs directly is typically not supported as they are currently being processed.
 		return 0, ErrArchivingActiveJobs
 	case StateAggregating:
-		// Archiving aggregating jobs requires specifying a group identifier.
 		return 0, ErrGroupRequiredForAggregation
 	default:
 		return 0, ErrUnsupportedJobStateForAction
@@ -365,7 +350,6 @@ func (s *Manager) ArchiveJobsByState(queue string, state JobState) (int, error) 
 	if err != nil {
 		return 0, err
 	}
-
 	return count, nil
 }
 
@@ -379,14 +363,12 @@ func (s *Manager) BatchArchiveJobs(queue string, jobIDs []string) ([]string, []s
 // CancelJob cancels a job with the specified ID.
 func (s *Manager) CancelJob(jobID string) error {
 	err := s.inspector.CancelProcessing(jobID)
-
 	if err != nil {
 		if errors.Is(err, asynq.ErrTaskNotFound) {
 			return ErrJobNotFound
 		}
 		return err
 	}
-
 	return nil
 }
 
@@ -431,14 +413,12 @@ func (s *Manager) BatchCancelJobs(jobIDs []string) ([]string, []string, error) {
 // DeleteJob deletes a job with the specified ID from its queue.
 func (s *Manager) DeleteJob(queue, jobID string) error {
 	err := s.inspector.DeleteTask(queue, jobID)
-
 	if err != nil {
 		if errors.Is(err, asynq.ErrTaskNotFound) {
 			return ErrJobNotFound
 		}
 		return err
 	}
-
 	return nil
 }
 
@@ -470,7 +450,6 @@ func (s *Manager) DeleteJobsByState(queue string, state JobState) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	return count, nil
 }
 
@@ -586,8 +565,7 @@ func (s *Manager) fetchQueueLocations() ([]*QueueLocation, error) {
 // parseRedisInfo parses the INFO command's output into a key-value map.
 func parseRedisInfo(infoStr string) map[string]string {
 	info := make(map[string]string)
-	lines := strings.SplitSeq(infoStr, "\r\n")
-	for line := range lines {
+	for line := range strings.SplitSeq(infoStr, "\r\n") {
 		if key, value, ok := strings.Cut(line, ":"); ok {
 			info[key] = value
 		}

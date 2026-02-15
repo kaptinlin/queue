@@ -103,7 +103,7 @@ func (h *Handler) composeMiddleware() {
 	h.Handle = composed
 }
 
-// Process executes the handler's job processing function, applying rate limiting and timeouts as configured.
+// Process executes the handler's job processing function with rate limiting and optional timeout.
 func (h *Handler) Process(ctx context.Context, job *Job) error {
 	if h.JobTimeout > 0 {
 		return h.processWithTimeout(ctx, job)

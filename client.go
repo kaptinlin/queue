@@ -96,18 +96,14 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 		return "", err
 	}
 
-	// Determine the appropriate retention period
 	retention := job.Options.Retention
 	if retention <= 0 {
 		retention = c.retention
 	}
-
-	// Prepare task options with retention if applicable
 	if retention > 0 {
 		opts = append(opts, asynq.Retention(retention))
 	}
 
-	// Enqueue the task with the prepared options
 	result, err := c.asynqClient.Enqueue(task, opts...)
 	if err != nil {
 		c.handleJobError(err, job, "failed to enqueue job")

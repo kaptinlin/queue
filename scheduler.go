@@ -154,12 +154,9 @@ func (s *Scheduler) RegisterCron(spec, jobType string, payload any, opts ...JobO
 
 // RegisterCronJob schedules a new cron job using the job details.
 func (s *Scheduler) RegisterCronJob(spec string, job *Job) (string, error) {
-	// Use cron/v3 to parse the spec and check if it's a valid cron expression.
-	_, err := cron.ParseStandard(spec)
-	if err != nil {
+	if _, err := cron.ParseStandard(spec); err != nil {
 		return "", ErrInvalidCronSpec
 	}
-
 	return s.configProvider.RegisterCronJob(spec, job)
 }
 

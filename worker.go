@@ -72,7 +72,6 @@ func (wc *WorkerConfig) Validate() error {
 
 // NewWorker creates and returns a new Worker based on the given Redis configuration and WorkerConfig options.
 func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) {
-	// Initial validation of the provided Redis configuration.
 	if redisConfig == nil {
 		return nil, ErrInvalidRedisConfig
 	}
@@ -80,31 +79,26 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 		return nil, fmt.Errorf("invalid redis config: %w", err)
 	}
 
-	// Apply default configuration and options.
 	config := &WorkerConfig{
 		Concurrency: max(1, runtime.NumCPU()),
-		Logger:      NewDefaultLogger(), // Default logger
-		// ErrorHandler is nil by default - no default error handler
+		Logger:      NewDefaultLogger(),
 	}
 	for _, opt := range opts {
 		opt(config)
 	}
 
-	// Apply default queue configuration if none is provided.
 	if len(config.Queues) == 0 {
 		config.Queues = DefaultQueues
 	}
 
-	// Validate the WorkerConfig.
 	if err := config.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid worker config: %w", err)
 	}
 
-	// Setup the Worker instance.
 	worker := &Worker{
 		groups:       make(map[string]*Group),
 		handlers:     make(map[string]*Handler),
-		errorHandler: config.ErrorHandler, // May be nil
+		errorHandler: config.ErrorHandler,
 		limiter:      config.Limiter,
 		logger:       config.Logger,
 	}
@@ -154,7 +148,6 @@ func (w *Worker) RegisterHandler(handler *Handler) error {
 	if handler.JobType == "" {
 		return ErrNoJobTypeSpecified
 	}
-
 	if handler.JobQueue == "" {
 		return ErrNoJobQueueSpecified
 	}
@@ -220,11 +213,9 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 
 	return func(ctx context.Context, task *asynq.Task) error {
 		if w.limiter != nil && !w.limiter.Allow() {
-			// Global rate limit exceeded
 			return &ErrRateLimit{RetryAfter: DefaultRateLimitRetryAfter}
 		}
 
-		// Extract payload from the task
 		var payload map[string]any
 		if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 			return err
@@ -232,7 +223,6 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 
 		taskID := task.ResultWriter().TaskID()
 
-		// Reconstructing Job object with task options
 		taskInfo, err := w.inspector.GetTaskInfo(handler.JobQueue, taskID)
 		if err != nil {
 			return err
@@ -247,13 +237,10 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 		)
 		job.SetID(taskID).SetResultWriter(task.ResultWriter())
 
-		// Process the job with the reconstructed Job object
 		if err := finalHandler(ctx, job); err != nil {
-			// Always log
 			w.logger.Error(fmt.Sprintf("failed to process job: %v, job_id=%s, job_type=%s, queue=%s",
 				err, job.ID, job.Type, job.Options.Queue))
 
-			// Optional: call custom error handler if provided
 			if w.errorHandler != nil {
 				w.errorHandler.HandleError(err, job)
 			}

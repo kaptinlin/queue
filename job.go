@@ -92,7 +92,6 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 	if j.Type == "" {
 		return nil, nil, ErrNoJobTypeSpecified
 	}
-
 	if j.Options.Queue == "" {
 		return nil, nil, ErrNoJobQueueSpecified
 	}
@@ -103,7 +102,6 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 	}
 
 	opts := j.ConvertToAsynqOptions()
-
 	return asynq.NewTask(j.Type, payloadBytes), opts, nil
 }
 
@@ -111,7 +109,6 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 func (j *Job) ConvertToAsynqOptions() []asynq.Option {
 	opts := make([]asynq.Option, 0, 6)
 
-	// Apply job options to the Asynq task.
 	if j.Options.Queue != "" {
 		opts = append(opts, asynq.Queue(j.Options.Queue))
 	}
@@ -137,15 +134,12 @@ func (j *Job) ConvertToAsynqOptions() []asynq.Option {
 // fingerprint generates a unique hash for the job based on its type and payload.
 func (j *Job) fingerprint() {
 	if j.Fingerprint != "" {
-		return // Fingerprint already set, no need to regenerate.
+		return
 	}
 
 	hash := md5.New() //nolint:gosec
 	hash.Write([]byte(j.Type))
 
-	// Marshal payload and options for fingerprint generation.
-	// Errors are intentionally ignored - partial JSON is acceptable for fingerprinting.
-	// The fingerprint is used for deduplication and debugging, not data integrity.
 	payloadBytes, _ := json.Marshal(j.Payload)
 	hash.Write(payloadBytes)
 	optionsBytes, _ := json.Marshal(j.Options)
@@ -186,8 +180,7 @@ func (j *Job) WriteResult(result any) error {
 		return fmt.Errorf("failed to serialize result: %w", err)
 	}
 
-	_, err = j.resultWriter.Write(resultBytes)
-	if err != nil {
+	if _, err = j.resultWriter.Write(resultBytes); err != nil {
 		return fmt.Errorf("failed to write result: %w", err)
 	}
 
