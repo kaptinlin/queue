@@ -64,9 +64,9 @@ func toActiveJobInfo(info *asynq.WorkerInfo) *ActiveJobInfo {
 
 // toActiveJobInfoList converts a slice of asynq.WorkerInfo to ActiveJobInfo.
 func toActiveJobInfoList(infos []*asynq.WorkerInfo) []*ActiveJobInfo {
-	activeJobs := make([]*ActiveJobInfo, 0, len(infos))
-	for _, info := range infos {
-		activeJobs = append(activeJobs, toActiveJobInfo(info))
+	activeJobs := make([]*ActiveJobInfo, len(infos))
+	for i, info := range infos {
+		activeJobs[i] = toActiveJobInfo(info)
 	}
 	return activeJobs
 }

@@ -207,8 +207,8 @@ func (w *Worker) setupHandlers(mux *asynq.ServeMux) {
 // makeHandlerFunc creates a task handling function, applying rate limiting and error handling.
 func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, task *asynq.Task) error {
 	finalHandler := handler.Process
-	for i := len(w.middlewares) - 1; i >= 0; i-- {
-		finalHandler = w.middlewares[i](finalHandler)
+	for i := range len(w.middlewares) {
+		finalHandler = w.middlewares[len(w.middlewares)-1-i](finalHandler)
 	}
 
 	return func(ctx context.Context, task *asynq.Task) error {

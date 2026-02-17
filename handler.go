@@ -96,8 +96,8 @@ func (h *Handler) Use(middlewares ...MiddlewareFunc) {
 // composeMiddleware composes all middleware into a single handler function.
 func (h *Handler) composeMiddleware() {
 	composed := h.originalHandle
-	for i := len(h.middlewares) - 1; i >= 0; i-- {
-		composed = h.middlewares[i](composed)
+	for i := range len(h.middlewares) {
+		composed = h.middlewares[len(h.middlewares)-1-i](composed)
 	}
 	// Update the handler function to include the composed middleware chain.
 	h.Handle = composed

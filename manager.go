@@ -533,8 +533,8 @@ func (s *Manager) fetchQueueLocations() ([]*QueueLocation, error) {
 		return nil, err
 	}
 
-	locations := make([]*QueueLocation, 0, len(queues))
-	for _, queue := range queues {
+	locations := make([]*QueueLocation, len(queues))
+	for i, queue := range queues {
 		keySlot, err := s.inspector.ClusterKeySlot(queue)
 		if err != nil {
 			return nil, err
@@ -545,18 +545,16 @@ func (s *Manager) fetchQueueLocations() ([]*QueueLocation, error) {
 			return nil, err
 		}
 
-		nodeAddrs := make([]string, 0, len(nodes))
-		for _, node := range nodes {
-			nodeAddrs = append(nodeAddrs, node.Addr)
+		nodeAddrs := make([]string, len(nodes))
+		for j, node := range nodes {
+			nodeAddrs[j] = node.Addr
 		}
 
-		location := &QueueLocation{
+		locations[i] = &QueueLocation{
 			Queue:   queue,
 			KeySlot: keySlot,
 			Nodes:   nodeAddrs,
 		}
-
-		locations = append(locations, location)
 	}
 
 	return locations, nil
