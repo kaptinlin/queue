@@ -50,7 +50,7 @@ func main() {
 	}
 
 	// Example operation: Getting queue information.
-	queueInfo, err := manager.GetQueueInfo("default")
+	queueInfo, err := manager.QueueInfo("default")
 	if err != nil {
 		fmt.Printf("Error getting queue information: %v\n", err)
 		return

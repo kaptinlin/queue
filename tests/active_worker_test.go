@@ -15,7 +15,7 @@ const activeJobTestQueue = "active_job_test"
 
 // TestManagerWithActiveWorker starts a worker, enqueues a
 // long-running job, then exercises the Manager methods that
-// require active jobs (ListWorkers, GetWorkerInfo,
+// require active jobs (ListWorkers, WorkerInfo,
 // ListActiveJobs, CancelActiveJobs).
 func TestManagerWithActiveWorker(t *testing.T) {
 	redisConfig := getRedisConfig()
@@ -87,9 +87,9 @@ func TestManagerListWorkersWithRunningWorker(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, workers)
 
-	// Test GetWorkerInfo with a real worker ID.
+	// Test WorkerInfo with a real worker ID.
 	if len(workers) > 0 {
-		info, err := manager.GetWorkerInfo(workers[0].ID)
+		info, err := manager.WorkerInfo(workers[0].ID)
 		require.NoError(t, err)
 		assert.Equal(t, workers[0].ID, info.ID)
 	}

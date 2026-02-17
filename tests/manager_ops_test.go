@@ -17,12 +17,12 @@ func cleanupManagerOpsQueue(t *testing.T, manager *queue.Manager) {
 	_ = manager.DeleteQueue(managerOpsTestQueue, true)
 }
 
-// --- GetWorkerInfo ---
+// --- WorkerInfo ---
 
-func TestManagerGetWorkerInfo_NotFound(t *testing.T) {
+func TestManagerWorkerInfo_NotFound(t *testing.T) {
 	manager := setupTestManager()
 
-	_, err := manager.GetWorkerInfo("nonexistent-worker-id")
+	_, err := manager.WorkerInfo("nonexistent-worker-id")
 	assert.ErrorIs(t, err, queue.ErrWorkerNotFound)
 }
 
@@ -69,7 +69,7 @@ func TestManagerPauseAndResumeQueue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify paused.
-	info, err := manager.GetQueueInfo(managerOpsTestQueue)
+	info, err := manager.QueueInfo(managerOpsTestQueue)
 	require.NoError(t, err)
 	assert.True(t, info.Paused, "Queue should be paused")
 
@@ -78,7 +78,7 @@ func TestManagerPauseAndResumeQueue(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify resumed.
-	info, err = manager.GetQueueInfo(managerOpsTestQueue)
+	info, err = manager.QueueInfo(managerOpsTestQueue)
 	require.NoError(t, err)
 	assert.False(t, info.Paused, "Queue should be resumed")
 }
@@ -223,22 +223,22 @@ func TestManagerCancelActiveJobs_EmptyQueue(t *testing.T) {
 	assert.Equal(t, 0, count)
 }
 
-// --- GetJobInfo ---
+// --- JobInfo ---
 
-func TestManagerGetJobInfo(t *testing.T) {
+func TestManagerJobInfo(t *testing.T) {
 	manager := setupTestManager()
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
 	defer func() { assert.NoError(t, client.Stop()) }()
 
-	info, err := manager.GetJobInfo(managerOpsTestQueue, ids[0])
+	info, err := manager.JobInfo(managerOpsTestQueue, ids[0])
 	require.NoError(t, err)
 	assert.Equal(t, ids[0], info.ID)
 	assert.Equal(t, managerOpsTestQueue, info.Queue)
 }
 
-func TestManagerGetJobInfo_NotFound(t *testing.T) {
+func TestManagerJobInfo_NotFound(t *testing.T) {
 	manager := setupTestManager()
 	defer cleanupManagerOpsQueue(t, manager)
 
@@ -246,7 +246,7 @@ func TestManagerGetJobInfo_NotFound(t *testing.T) {
 	client, _ := enqueueManagerOpsJobs(t, 1)
 	defer func() { assert.NoError(t, client.Stop()) }()
 
-	_, err := manager.GetJobInfo(managerOpsTestQueue, "nonexistent-job-id")
+	_, err := manager.JobInfo(managerOpsTestQueue, "nonexistent-job-id")
 	assert.ErrorIs(t, err, queue.ErrJobNotFound)
 }
 
@@ -312,12 +312,12 @@ func TestManagerListActiveJobs_NoActiveJobs(t *testing.T) {
 	assert.Empty(t, jobs)
 }
 
-// --- GetQueueInfo non-existent ---
+// --- QueueInfo non-existent ---
 
-func TestManagerGetQueueInfo_NonExistent(t *testing.T) {
+func TestManagerQueueInfo_NonExistent(t *testing.T) {
 	manager := setupTestManager()
 
-	_, err := manager.GetQueueInfo("nonexistent_queue_xyz")
+	_, err := manager.QueueInfo("nonexistent_queue_xyz")
 	assert.ErrorIs(t, err, queue.ErrQueueNotFound)
 }
 
@@ -341,12 +341,12 @@ func TestManagerDeleteQueue_NonExistent(t *testing.T) {
 	assert.ErrorIs(t, err, queue.ErrQueueNotFound)
 }
 
-// --- GetRedisInfo ---
+// --- RedisInfo ---
 
-func TestManagerGetRedisInfo(t *testing.T) {
+func TestManagerRedisInfo(t *testing.T) {
 	manager := setupTestManager()
 
-	info, err := manager.GetRedisInfo(context.Background())
+	info, err := manager.RedisInfo(context.Background())
 	require.NoError(t, err)
 	assert.NotNil(t, info)
 	assert.NotEmpty(t, info.Address)

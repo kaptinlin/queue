@@ -82,9 +82,9 @@ func TestWriteResult_SerializationError(t *testing.T) {
 	assert.ErrorIs(t, err, ErrResultWriterNotSet)
 }
 
-func TestGetRedisInfo_UnsupportedClient(t *testing.T) {
+func TestRedisInfo_UnsupportedClient(t *testing.T) {
 	m := &Manager{client: nil}
-	_, err := m.GetRedisInfo(context.Background())
+	_, err := m.RedisInfo(context.Background())
 	assert.ErrorIs(t, err, ErrRedisClientNotSupported)
 }
 
@@ -167,9 +167,9 @@ func TestRetryDelayFunc_DefaultFallback(t *testing.T) {
 	assert.Greater(t, d, time.Duration(0))
 }
 
-func TestGetRedisInfo_StandardClient(t *testing.T) {
+func TestRedisInfo_StandardClient(t *testing.T) {
 	m := &Manager{client: nil}
-	_, err := m.GetRedisInfo(context.Background())
+	_, err := m.RedisInfo(context.Background())
 	assert.ErrorIs(t, err, ErrRedisClientNotSupported)
 }
 

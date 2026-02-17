@@ -198,7 +198,7 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 
 	// Initialize manager to retrieve job information
 	manager := setupTestManager()
-	jobInfo, err := manager.GetJobInfo(queue.DefaultQueue, jobID)
+	jobInfo, err := manager.JobInfo(queue.DefaultQueue, jobID)
 	require.NoError(t, err, "Failed to get job info")
 
 	// Deserialize the job result to verify it

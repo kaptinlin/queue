@@ -28,12 +28,12 @@ func TestManagerListQueues(t *testing.T) {
 	t.Logf("Found %d queues", len(queues))
 }
 
-// TestManagerGetQueueInfo tests the GetQueueInfo method for a specific queue.
-func TestManagerGetQueueInfo(t *testing.T) {
+// TestManagerQueueInfo tests the QueueInfo method for a specific queue.
+func TestManagerQueueInfo(t *testing.T) {
 	manager := setupTestManager()
 
 	queueName := queue.DefaultQueue
-	queueInfo, err := manager.GetQueueInfo(queueName)
+	queueInfo, err := manager.QueueInfo(queueName)
 	require.NoError(t, err, "Error getting queue info")
 	assert.NotNil(t, queueInfo, "Queue info should not be nil")
 	t.Logf("Queue '%s' info: %+v", queueName, queueInfo)
