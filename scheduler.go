@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/robfig/cron/v3"
+	"github.com/netresearch/go-cron"
 )
 
 // ErrInvalidCronSpec is returned when a cron specification string cannot be parsed.
