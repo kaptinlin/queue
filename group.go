@@ -1,8 +1,6 @@
 package queue
 
-import (
-	"sync"
-)
+import "sync"
 
 // Group represents a collection of handlers with specific middleware applied.
 type Group struct {

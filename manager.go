@@ -108,10 +108,7 @@ func (s *Manager) GetQueueInfo(queueName string) (*QueueInfo, error) {
 	if err != nil {
 		return nil, s.handleQueueError(err)
 	}
-
-	snapshot := toQueueInfo(qinfo)
-
-	return snapshot, nil
+	return toQueueInfo(qinfo), nil
 }
 
 // ListQueueStats lists statistics for a queue over the past n days.
@@ -132,10 +129,10 @@ func (s *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats
 // DeleteQueue deletes a queue by its name.
 func (s *Manager) DeleteQueue(queueName string, force bool) error {
 	err := s.inspector.DeleteQueue(queueName, force)
+	if errors.Is(err, asynq.ErrQueueNotEmpty) {
+		return ErrQueueNotEmpty
+	}
 	if err != nil {
-		if errors.Is(err, asynq.ErrQueueNotEmpty) {
-			return ErrQueueNotEmpty
-		}
 		return s.handleQueueError(err)
 	}
 	return nil
@@ -143,8 +140,7 @@ func (s *Manager) DeleteQueue(queueName string, force bool) error {
 
 // PauseQueue pauses a queue by its name.
 func (s *Manager) PauseQueue(queueName string) error {
-	err := s.inspector.PauseQueue(queueName)
-	if err != nil {
+	if err := s.inspector.PauseQueue(queueName); err != nil {
 		return s.handleQueueError(err)
 	}
 	return nil
@@ -152,8 +148,7 @@ func (s *Manager) PauseQueue(queueName string) error {
 
 // ResumeQueue resumes a paused queue by its name.
 func (s *Manager) ResumeQueue(queueName string) error {
-	err := s.inspector.UnpauseQueue(queueName)
-	if err != nil {
+	if err := s.inspector.UnpauseQueue(queueName); err != nil {
 		return s.handleQueueError(err)
 	}
 	return nil
@@ -231,10 +226,10 @@ func (s *Manager) ListActiveJobs(queue string, size, page int) ([]*JobInfo, erro
 // GetJobInfo retrieves information for a single job using its ID and queue name.
 func (s *Manager) GetJobInfo(queue, jobID string) (*JobInfo, error) {
 	taskInfo, err := s.inspector.GetTaskInfo(queue, jobID)
+	if errors.Is(err, asynq.ErrTaskNotFound) {
+		return nil, ErrJobNotFound
+	}
 	if err != nil {
-		if errors.Is(err, asynq.ErrTaskNotFound) {
-			return nil, ErrJobNotFound
-		}
 		return nil, err
 	}
 	return toJobInfo(taskInfo, nil), nil
@@ -243,13 +238,10 @@ func (s *Manager) GetJobInfo(queue, jobID string) (*JobInfo, error) {
 // RunJob triggers immediate execution of a job with the specified ID.
 func (s *Manager) RunJob(queue, jobID string) error {
 	err := s.inspector.RunTask(queue, jobID)
-	if err != nil {
-		if errors.Is(err, asynq.ErrTaskNotFound) {
-			return ErrJobNotFound
-		}
-		return err
+	if errors.Is(err, asynq.ErrTaskNotFound) {
+		return ErrJobNotFound
 	}
-	return nil
+	return err
 }
 
 // RunJobsByState triggers all jobs in a specified queue and state to run immediately.
@@ -313,13 +305,10 @@ func (s *Manager) BatchRunJobs(queue string, jobIDs []string) ([]string, []strin
 // ArchiveJob moves a job with the specified ID to the archive.
 func (s *Manager) ArchiveJob(queue, jobID string) error {
 	err := s.inspector.ArchiveTask(queue, jobID)
-	if err != nil {
-		if errors.Is(err, asynq.ErrTaskNotFound) {
-			return ErrJobNotFound
-		}
-		return err
+	if errors.Is(err, asynq.ErrTaskNotFound) {
+		return ErrJobNotFound
 	}
-	return nil
+	return err
 }
 
 // ArchiveJobsByState archives all jobs in a specified queue based on their state.
@@ -363,13 +352,10 @@ func (s *Manager) BatchArchiveJobs(queue string, jobIDs []string) ([]string, []s
 // CancelJob cancels a job with the specified ID.
 func (s *Manager) CancelJob(jobID string) error {
 	err := s.inspector.CancelProcessing(jobID)
-	if err != nil {
-		if errors.Is(err, asynq.ErrTaskNotFound) {
-			return ErrJobNotFound
-		}
-		return err
+	if errors.Is(err, asynq.ErrTaskNotFound) {
+		return ErrJobNotFound
 	}
-	return nil
+	return err
 }
 
 // CancelActiveJobs cancels all active jobs in the specified queue.
@@ -413,13 +399,10 @@ func (s *Manager) BatchCancelJobs(jobIDs []string) ([]string, []string, error) {
 // DeleteJob deletes a job with the specified ID from its queue.
 func (s *Manager) DeleteJob(queue, jobID string) error {
 	err := s.inspector.DeleteTask(queue, jobID)
-	if err != nil {
-		if errors.Is(err, asynq.ErrTaskNotFound) {
-			return ErrJobNotFound
-		}
-		return err
+	if errors.Is(err, asynq.ErrTaskNotFound) {
+		return ErrJobNotFound
 	}
-	return nil
+	return err
 }
 
 // DeleteJobsByState deletes all jobs in a specified queue based on their state.
