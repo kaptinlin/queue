@@ -165,12 +165,12 @@ We provide convenient Make targets for testing with Redis:
 
 ```bash
 # Recommended: Run tests with automatic Redis setup and cleanup
-make test-with-redis
+task test-with-redis
 
 # Or manually manage Redis and run tests
-make redis          # Start Redis service
-make test           # Run tests
-make redis-stop     # Stop Redis service
+task redis          # Start Redis service
+task test           # Run tests
+task redis-stop     # Stop Redis service
 ```
 
 For more detailed testing instructions, see [TEST.md](./TEST.md).

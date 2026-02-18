@@ -14,17 +14,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Testing (recommended workflow)
-make test-with-redis    # Start Redis, run tests, cleanup automatically
-make redis              # Start Redis via docker-compose
-make test               # Run tests (requires Redis running)
-make redis-stop         # Stop Redis service
+task test-with-redis    # Start Redis, run tests, cleanup automatically
+task redis              # Start Redis via docker-compose
+task test               # Run tests (requires Redis running)
+task redis-stop         # Stop Redis service
 
 # Code quality
-make lint               # Run golangci-lint + go mod tidy verification
-make all                # Run lint + test-with-redis
+task lint               # Run golangci-lint + go mod tidy verification
+task default            # Run lint + test-with-redis
 
 # Development
-make clean              # Remove bin/ artifacts
+task clean              # Remove bin/ artifacts
 go get -u all && go mod tidy  # Update dependencies
 ```
 
@@ -227,8 +227,8 @@ Tests require Redis and live in `tests/` directory:
 Run tests:
 
 ```bash
-make test-with-redis  # Recommended: automatic Redis setup/cleanup
-make redis && make test && make redis-stop  # Manual Redis management
+task test-with-redis  # Recommended: automatic Redis setup/cleanup
+task redis && task test && task redis-stop  # Manual Redis management
 ```
 
 ## Code Organization
