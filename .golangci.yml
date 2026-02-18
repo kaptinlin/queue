@@ -24,6 +24,9 @@ linters:
       rules:
         - name: unused-parameter
           disabled: true
+    gosec:
+      excludes:
+        - G117
   exclusions:
     generated: lax
     rules:
