@@ -38,6 +38,19 @@ tasks:
     cmds:
       - rm -rf {{.GOBIN}}
 
+  deps:
+    desc: Download Go module dependencies
+    cmds:
+      - echo "Downloading dependencies..."
+      - go mod download
+      - go mod tidy
+
+  deps:update:
+    desc: Update all dependencies
+    cmds:
+      - echo "Updating dependencies..."
+      - go get -u ./... && go mod tidy
+
   test:
     desc: Run tests (requires Redis to be running)
     cmds:
