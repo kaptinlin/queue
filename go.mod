@@ -5,7 +5,7 @@ go 1.26
 require (
 	github.com/go-json-experiment/json v0.0.0-20251027170946-4849db3c2f7e
 	github.com/hibiken/asynq v0.26.0
-	github.com/netresearch/go-cron v0.12.0
+	github.com/netresearch/go-cron v0.13.0
 	github.com/redis/go-redis/v9 v9.18.0
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/time v0.14.0
