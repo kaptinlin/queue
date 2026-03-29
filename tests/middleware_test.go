@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"log"
 	"sync"
 	"testing"
 	"time"
@@ -27,7 +26,7 @@ func TestGlobalMiddleware(t *testing.T) {
 			defer mu.Unlock()
 
 			processedJobs++
-			log.Printf("Processing job: %v", job.Type)
+			t.Logf("Processing job: %v", job.Type)
 			return next(ctx, job)
 		}
 	}
@@ -45,9 +44,7 @@ func TestGlobalMiddleware(t *testing.T) {
 
 	// Start the worker in a goroutine
 	go func() {
-		if err := worker.Start(); err != nil {
-			log.Fatalf("Failed to start worker: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "Failed to start worker")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop(), "Failed to stop worker")
@@ -90,7 +87,7 @@ func TestScopedMiddleware(t *testing.T) {
 			processedJobs++
 			mu.Unlock()
 
-			log.Printf("Processing job: %v", job.Type)
+			t.Logf("Processing job: %v", job.Type)
 			return next(ctx, job)
 		}
 	}
@@ -108,9 +105,7 @@ func TestScopedMiddleware(t *testing.T) {
 
 	// Start the worker in a goroutine to process jobs.
 	go func() {
-		if err := worker.Start(); err != nil {
-			log.Fatalf("Failed to start worker: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "Failed to start worker")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop(), "Failed to stop worker")

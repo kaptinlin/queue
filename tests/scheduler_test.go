@@ -61,9 +61,7 @@ func TestSchedulerStartAndStop(t *testing.T) {
 	require.NoError(t, err, "Failed to create scheduler")
 
 	go func() {
-		if err := scheduler.Start(); err != nil {
-			t.Errorf("Failed to start scheduler: %v", err)
-		}
+		assert.NoError(t, scheduler.Start(), "Failed to start scheduler")
 	}()
 
 	time.Sleep(2 * time.Second)
@@ -105,9 +103,7 @@ func TestSchedulerPreEnqueueHook(t *testing.T) {
 	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
-		if err := scheduler.Start(); err != nil {
-			t.Errorf("Failed to start scheduler: %v", err)
-		}
+		assert.NoError(t, scheduler.Start(), "Failed to start scheduler")
 	}()
 	defer func() {
 		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
@@ -137,9 +133,7 @@ func TestSchedulerPostEnqueueHook(t *testing.T) {
 	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
-		if err := scheduler.Start(); err != nil {
-			t.Errorf("Failed to start scheduler: %v", err)
-		}
+		assert.NoError(t, scheduler.Start(), "Failed to start scheduler")
 	}()
 	defer func() {
 		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
@@ -163,9 +157,7 @@ func TestSchedulerPostEnqueueUsesConfiguredLogger(t *testing.T) {
 	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
-		if err := scheduler.Start(); err != nil {
-			t.Errorf("Failed to start scheduler: %v", err)
-		}
+		assert.NoError(t, scheduler.Start(), "Failed to start scheduler")
 	}()
 	defer func() {
 		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
@@ -205,9 +197,7 @@ func TestSchedulerCronTriggerWithWorkerProcessing(t *testing.T) {
 	require.NoError(t, err, "Failed to register handler")
 
 	go func() {
-		if startErr := worker.Start(); startErr != nil {
-			t.Errorf("Worker failed to start: %v", startErr)
-		}
+		assert.NoError(t, worker.Start(), "Worker failed to start")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop(), "Failed to stop worker")
@@ -223,9 +213,7 @@ func TestSchedulerCronTriggerWithWorkerProcessing(t *testing.T) {
 	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
-		if startErr := scheduler.Start(); startErr != nil {
-			t.Errorf("Scheduler failed to start: %v", startErr)
-		}
+		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
 	}()
 	defer func() {
 		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
@@ -260,9 +248,7 @@ func TestSchedulerPeriodicMultipleExecutions(t *testing.T) {
 	require.NoError(t, err, "Failed to register handler")
 
 	go func() {
-		if startErr := worker.Start(); startErr != nil {
-			t.Errorf("Worker failed to start: %v", startErr)
-		}
+		assert.NoError(t, worker.Start(), "Worker failed to start")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop(), "Failed to stop worker")
@@ -280,9 +266,7 @@ func TestSchedulerPeriodicMultipleExecutions(t *testing.T) {
 	require.NoError(t, err, "Failed to register periodic job")
 
 	go func() {
-		if startErr := scheduler.Start(); startErr != nil {
-			t.Errorf("Scheduler failed to start: %v", startErr)
-		}
+		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
 	}()
 	defer func() {
 		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
@@ -321,9 +305,7 @@ func TestSchedulerPreEnqueueFuncReceivesJobType(t *testing.T) {
 	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
-		if startErr := scheduler.Start(); startErr != nil {
-			t.Errorf("Scheduler failed to start: %v", startErr)
-		}
+		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
 	}()
 
 	// Allow scheduler to fully initialize before deferred Stop.
@@ -384,9 +366,7 @@ func TestSchedulerPostEnqueueFuncReceivesJobInfo(t *testing.T) {
 	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
-		if startErr := scheduler.Start(); startErr != nil {
-			t.Errorf("Scheduler failed to start: %v", startErr)
-		}
+		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
 	}()
 	defer func() {
 		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
@@ -444,9 +424,7 @@ func TestSchedulerPreAndPostEnqueueFuncsBothFire(t *testing.T) {
 	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
-		if startErr := scheduler.Start(); startErr != nil {
-			t.Errorf("Scheduler failed to start: %v", startErr)
-		}
+		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
 	}()
 	defer func() {
 		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
@@ -485,9 +463,7 @@ func TestSchedulerUnregisterCronJobStopsEnqueue(t *testing.T) {
 	require.NoError(t, err, "Failed to register cron job")
 
 	go func() {
-		if startErr := scheduler.Start(); startErr != nil {
-			t.Errorf("Scheduler failed to start: %v", startErr)
-		}
+		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
 	}()
 	defer func() {
 		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")

@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"log"
 	"sync"
 	"testing"
 	"time"
@@ -27,7 +26,7 @@ func TestGroupMiddleware(t *testing.T) {
 			processedJobs++
 			mu.Unlock()
 
-			log.Printf("Group processing job: %v", job.Type)
+			t.Logf("Group processing job: %v", job.Type)
 			return next(ctx, job)
 		}
 	}
@@ -48,9 +47,7 @@ func TestGroupMiddleware(t *testing.T) {
 
 	// Start the worker in a goroutine to process jobs.
 	go func() {
-		if err := worker.Start(); err != nil {
-			log.Fatalf("Failed to start worker: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "Failed to start worker")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop(), "Failed to stop worker")

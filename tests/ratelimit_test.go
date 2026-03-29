@@ -42,9 +42,7 @@ func TestWorkerRateLimiterBlocksBeforeHandler(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		if err := worker.Start(); err != nil {
-			t.Errorf("worker start: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "worker start failed")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop())
@@ -92,9 +90,7 @@ func TestHandlerRateLimiterIndependentOfWorker(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		if err := worker.Start(); err != nil {
-			t.Errorf("worker start: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "worker start failed")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop())
@@ -148,9 +144,7 @@ func TestDualRateLimiterWorkerBlocksFirst(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		if err := worker.Start(); err != nil {
-			t.Errorf("worker start: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "worker start failed")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop())
@@ -235,9 +229,7 @@ func TestDualRateLimiterBothAllow(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		if err := worker.Start(); err != nil {
-			t.Errorf("worker start: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "worker start failed")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop())
@@ -301,9 +293,7 @@ func TestDualRateLimiterErrorHandlerReceivesRateLimitError(t *testing.T) {
 	require.NoError(t, err)
 
 	go func() {
-		if err := worker.Start(); err != nil {
-			t.Errorf("worker start: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "worker start failed")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop())

@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"errors"
-	"log"
 	"sync"
 	"testing"
 	"time"
@@ -24,9 +23,7 @@ func TestWorkerStartStop(t *testing.T) {
 
 	// Start worker in a goroutine
 	go func() {
-		if err := worker.Start(); err != nil {
-			t.Errorf("Failed to start worker: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "Failed to start worker")
 	}()
 
 	// Allow some time for worker to start
@@ -83,9 +80,7 @@ func TestWorkerWithWorkerErrorHandler(t *testing.T) {
 	require.NoError(t, err, "Failed to register failing job handler")
 
 	go func() {
-		if err := worker.Start(); err != nil {
-			log.Fatalf("Failed to start worker: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "Failed to start worker")
 	}()
 
 	time.Sleep(2 * time.Second) // Adjusted wait time for startup

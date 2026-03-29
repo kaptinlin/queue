@@ -60,9 +60,7 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 
 	// Start the worker in a separate goroutine to process jobs.
 	go func() {
-		if err := worker.Start(); err != nil {
-			t.Errorf("Worker failed to start: %v", err)
-		}
+		assert.NoError(t, worker.Start(), "Worker failed to start")
 	}()
 	defer func() {
 		assert.NoError(t, worker.Stop(), "Failed to stop worker")
