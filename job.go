@@ -2,6 +2,7 @@ package queue
 
 import (
 	"crypto/md5" //nolint:gosec
+	"errors"
 	"fmt"
 	"time"
 
@@ -98,7 +99,7 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 
 	payloadBytes, err := json.Marshal(j.Payload)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to serialize payload: %w", err)
+		return nil, nil, fmt.Errorf("failed to serialize payload: %w", errors.Join(ErrSerializationFailure, err))
 	}
 
 	opts := j.ConvertToAsynqOptions()
@@ -152,7 +153,7 @@ func (j *Job) fingerprint() {
 func (j *Job) DecodePayload(v any) error {
 	payloadBytes, err := json.Marshal(j.Payload)
 	if err != nil {
-		return fmt.Errorf("failed to serialize payload: %w", err)
+		return fmt.Errorf("failed to serialize payload: %w", errors.Join(ErrSerializationFailure, err))
 	}
 	return json.Unmarshal(payloadBytes, v)
 }
