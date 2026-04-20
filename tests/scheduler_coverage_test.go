@@ -44,6 +44,15 @@ func TestNewScheduler_InvalidRedisConfig(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestSchedulerRegisterCron_AcceptsStandardSpec(t *testing.T) {
+	scheduler, err := queue.NewScheduler(getRedisConfig())
+	require.NoError(t, err)
+
+	id, err := scheduler.RegisterCron("*/5 * * * *", "cron_standard_spec_test", nil)
+	require.NoError(t, err)
+	assert.NotEmpty(t, id)
+}
+
 // --- RegisterPeriodicJob ---
 
 func TestSchedulerRegisterPeriodicJob(t *testing.T) {

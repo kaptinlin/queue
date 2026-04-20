@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Distributed job queue processing library** built on [Asynq](https://github.com/hibiken/asynq) and Redis. Provides automatic error logging, custom error handling, retries, priority queues, rate limiting, job retention, and distributed worker architecture for Go applications.
 
 **Module:** `github.com/kaptinlin/queue`
-**Go Version:** 1.26+
+**Go Version:** 1.26.2
 **Key Dependencies:** asynq, go-redis/v9, go-json-experiment/json, netresearch/go-cron, golang.org/x/time
 
 ## Commands
@@ -265,7 +265,7 @@ queue/
 
 ## Environment Requirements
 
-- **Go:** 1.26+
+- **Go:** 1.26.2
 - **Redis:** Any version compatible with go-redis v9 and Asynq
 - **golangci-lint:** 2.9.0 (managed via `.golangci.version`)
 
