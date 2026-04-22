@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 const managerTestQueue = "manager_batch_test"
@@ -333,7 +334,8 @@ func TestBatchRunJobs_NonExistentIDs(t *testing.T) {
 	assert.Len(t, failed, 2)
 
 	// Cleanup the real job.
-	manager.BatchDeleteJobs(managerTestQueue, ids) //nolint:errcheck
+	_, _, err = manager.BatchDeleteJobs(managerTestQueue, ids)
+	assert.NoError(t, err)
 }
 
 func TestBatchRunJobs_PartialFailure(t *testing.T) {

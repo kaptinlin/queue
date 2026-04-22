@@ -1,3 +1,4 @@
+// Package main shows how to run a worker for the simple example.
 package main
 
 import (

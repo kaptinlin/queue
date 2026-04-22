@@ -120,6 +120,8 @@ func NewSkipRetryError(reason string) error {
 }
 
 // ErrRateLimit defines a custom error type for rate limiting scenarios.
+//
+//nolint:errname // Preserve the existing exported API for rate limit errors.
 type ErrRateLimit struct {
 	RetryAfter time.Duration // Suggested time to wait before retrying the operation.
 }

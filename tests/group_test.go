@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 // TestGroupMiddleware ensures that group-specific middleware is correctly applied to jobs processed by handlers within the group.

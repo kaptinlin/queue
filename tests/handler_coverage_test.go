@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 // --- Handler.WithOptions ---

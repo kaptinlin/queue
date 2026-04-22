@@ -13,6 +13,7 @@ var (
 	redisDB   = 0
 )
 
+// TestMain configures integration test flags.
 func TestMain(m *testing.M) {
 	flag.StringVar(&redisAddr, "redis_addr", "localhost:6379", "Redis address to use in testing")
 	flag.IntVar(&redisDB, "redis_db", 0, "Redis DB number to use in testing")

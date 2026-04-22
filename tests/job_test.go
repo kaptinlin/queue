@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/go-json-experiment/json"
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 func TestNewJob(t *testing.T) {

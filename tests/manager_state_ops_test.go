@@ -4,9 +4,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 const stateOpsTestQueue = "state_ops_test"

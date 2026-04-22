@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"github.com/hibiken/asynq"
-	"github.com/kaptinlin/queue"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 // TestManagerListWorkers tests the ListWorkers method of the Manager.

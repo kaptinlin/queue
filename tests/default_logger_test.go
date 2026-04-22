@@ -6,9 +6,10 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 func TestDefaultLoggerMethods(t *testing.T) {

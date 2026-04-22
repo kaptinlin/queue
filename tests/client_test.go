@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 func TestClientEnqueue(t *testing.T) {
@@ -51,9 +52,7 @@ func TestClientWithClientRetention(t *testing.T) {
 		queue.WithClientRetention(retentionPeriod),
 	)
 	require.NoError(t, err, "Failed to create client with retention")
-	defer func() {
-		assert.NoError(t, client.Stop(), "Failed to stop client")
-	}()
+	assert.NoError(t, client.Stop(), "Failed to stop client")
 }
 
 func TestClientWithClientErrorHandler(t *testing.T) {

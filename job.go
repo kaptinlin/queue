@@ -1,7 +1,7 @@
 package queue
 
 import (
-	"crypto/md5" //nolint:gosec
+	"crypto/md5" //nolint:gosec // Used only for stable, non-cryptographic job fingerprints.
 	"errors"
 	"fmt"
 	"time"
@@ -138,7 +138,7 @@ func (j *Job) fingerprint() {
 		return
 	}
 
-	hash := md5.New() //nolint:gosec
+	hash := md5.New() //nolint:gosec // Used only for stable, non-cryptographic job fingerprints.
 	hash.Write([]byte(j.Type))
 
 	payloadBytes, _ := json.Marshal(j.Payload)

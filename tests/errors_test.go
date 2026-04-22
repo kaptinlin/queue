@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/kaptinlin/queue"
 )
 
 func TestNewSkipRetryError(t *testing.T) {

@@ -1,11 +1,13 @@
+// Package main shows how to inspect queue state with Manager.
 package main
 
 import (
 	"fmt"
 
 	"github.com/hibiken/asynq"
-	"github.com/kaptinlin/queue"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/kaptinlin/queue"
 )
 
 func main() {

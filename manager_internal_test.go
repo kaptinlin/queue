@@ -20,13 +20,13 @@ func TestParseRedisInfo_Empty(t *testing.T) {
 }
 
 func TestIsQueueNotFoundError_True(t *testing.T) {
-	//nolint:err113
+	//nolint:err113 // Test the string-based queue-not-found matcher.
 	err := errors.New("queue does not exist")
 	assert.True(t, isQueueNotFoundError(err))
 }
 
 func TestIsQueueNotFoundError_False(t *testing.T) {
-	//nolint:err113
+	//nolint:err113 // Test the negative case with a one-off error value.
 	err := errors.New("some other error")
 	assert.False(t, isQueueNotFoundError(err))
 }

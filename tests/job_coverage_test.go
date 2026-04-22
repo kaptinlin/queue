@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/kaptinlin/queue"
 )
 
 // --- Job.WithOptions ---
@@ -50,8 +51,7 @@ func TestConvertToAsynqOptions_AllOptions(t *testing.T) {
 		queue.WithRetention(24*time.Hour),
 	)
 	opts := job.ConvertToAsynqOptions()
-	// Queue + Delay + ScheduleAt + MaxRetries + Deadline + Retention = 6
-	assert.Len(t, opts, 6)
+	assert.Len(t, opts, 6, "all supported job options should be converted")
 }
 
 // --- WriteResult edge cases ---

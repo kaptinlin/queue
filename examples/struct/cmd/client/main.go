@@ -1,3 +1,4 @@
+// Package main shows how to enqueue a structured example job.
 package main
 
 import (

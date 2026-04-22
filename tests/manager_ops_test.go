@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 const managerOpsTestQueue = "manager_ops_test"
@@ -35,7 +36,10 @@ func TestManagerListQueueStats(t *testing.T) {
 	// Enqueue a job to ensure the queue exists.
 	client, ids := enqueueManagerOpsJobs(t, 1)
 	defer func() { assert.NoError(t, client.Stop()) }()
-	defer func() { manager.BatchDeleteJobs(managerOpsTestQueue, ids) }() //nolint:errcheck
+	defer func() {
+		_, _, cleanupErr := manager.BatchDeleteJobs(managerOpsTestQueue, ids)
+		assert.NoError(t, cleanupErr)
+	}()
 
 	stats, err := manager.ListQueueStats(managerOpsTestQueue, 3)
 	require.NoError(t, err)
@@ -62,7 +66,10 @@ func TestManagerPauseAndResumeQueue(t *testing.T) {
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
 	defer func() { assert.NoError(t, client.Stop()) }()
-	defer func() { manager.BatchDeleteJobs(managerOpsTestQueue, ids) }() //nolint:errcheck
+	defer func() {
+		_, _, cleanupErr := manager.BatchDeleteJobs(managerOpsTestQueue, ids)
+		assert.NoError(t, cleanupErr)
+	}()
 
 	// Pause the queue.
 	err := manager.PauseQueue(managerOpsTestQueue)
@@ -215,7 +222,8 @@ func TestManagerCancelActiveJobs_EmptyQueue(t *testing.T) {
 	// Ensure queue exists.
 	client, ids := enqueueManagerOpsJobs(t, 1)
 	defer func() { assert.NoError(t, client.Stop()) }()
-	manager.BatchDeleteJobs(managerOpsTestQueue, ids) //nolint:errcheck
+	_, _, cleanupErr := manager.BatchDeleteJobs(managerOpsTestQueue, ids)
+	assert.NoError(t, cleanupErr)
 
 	// No active jobs to cancel.
 	count, err := manager.CancelActiveJobs(managerOpsTestQueue, 10, 1)
@@ -364,7 +372,8 @@ func TestManagerRunAggregatingJobs_EmptyQueue(t *testing.T) {
 	// Ensure queue exists.
 	client, ids := enqueueManagerOpsJobs(t, 1)
 	defer func() { assert.NoError(t, client.Stop()) }()
-	manager.BatchDeleteJobs(managerOpsTestQueue, ids) //nolint:errcheck
+	_, _, cleanupErr := manager.BatchDeleteJobs(managerOpsTestQueue, ids)
+	assert.NoError(t, cleanupErr)
 
 	count, err := manager.RunAggregatingJobs(managerOpsTestQueue, "test-group")
 	// May return error if queue doesn't have aggregating tasks; that's OK.
@@ -378,7 +387,8 @@ func TestManagerArchiveAggregatingJobs_EmptyQueue(t *testing.T) {
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
 	defer func() { assert.NoError(t, client.Stop()) }()
-	manager.BatchDeleteJobs(managerOpsTestQueue, ids) //nolint:errcheck
+	_, _, cleanupErr := manager.BatchDeleteJobs(managerOpsTestQueue, ids)
+	assert.NoError(t, cleanupErr)
 
 	count, err := manager.ArchiveAggregatingJobs(managerOpsTestQueue, "test-group")
 	_ = err
@@ -391,7 +401,8 @@ func TestManagerDeleteAggregatingJobs_EmptyQueue(t *testing.T) {
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
 	defer func() { assert.NoError(t, client.Stop()) }()
-	manager.BatchDeleteJobs(managerOpsTestQueue, ids) //nolint:errcheck
+	_, _, cleanupErr := manager.BatchDeleteJobs(managerOpsTestQueue, ids)
+	assert.NoError(t, cleanupErr)
 
 	count, err := manager.DeleteAggregatingJobs(managerOpsTestQueue, "test-group")
 	_ = err

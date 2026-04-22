@@ -6,9 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kaptinlin/queue"
 )
 
 // TestGlobalMiddleware ensures global middleware is applied to all jobs processed by the worker.

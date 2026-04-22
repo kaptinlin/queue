@@ -57,7 +57,7 @@ type WorkerConfig struct {
 	Logger       Logger
 }
 
-// validate checks if the WorkerConfig's fields are correctly set, returning an error if any field is invalid.
+// Validate checks if the WorkerConfig fields are correctly set.
 func (wc *WorkerConfig) Validate() error {
 	if wc.Concurrency <= 0 {
 		return ErrInvalidWorkerConcurrency

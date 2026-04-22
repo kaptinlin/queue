@@ -166,7 +166,7 @@ func (m *Manager) ListJobsByState(queue string, state JobState, size, page int) 
 
 	var tasks []*asynq.TaskInfo
 	var err error
-	switch state { //nolint:exhaustive
+	switch state {
 	case StatePending:
 		tasks, err = m.inspector.ListPendingTasks(queue, asynq.PageSize(size), asynq.Page(page))
 	case StateRetry:

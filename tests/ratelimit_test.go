@@ -9,10 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kaptinlin/queue"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
+
+	"github.com/kaptinlin/queue"
 )
 
 // TestWorkerRateLimiterBlocksBeforeHandler verifies that the worker-level rate

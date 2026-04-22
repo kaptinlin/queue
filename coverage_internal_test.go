@@ -62,7 +62,7 @@ func TestProcessWithTimeout_Success(t *testing.T) {
 
 func TestHandleQueueError_QueueNotFound(t *testing.T) {
 	m := &Manager{}
-	//nolint:err113
+	//nolint:err113 // Test the string-based queue-not-found mapping.
 	err := m.handleQueueError(
 		errors.New("queue does not exist"))
 	assert.ErrorIs(t, err, ErrQueueNotFound)
@@ -70,7 +70,7 @@ func TestHandleQueueError_QueueNotFound(t *testing.T) {
 
 func TestHandleQueueError_OtherError(t *testing.T) {
 	m := &Manager{}
-	//nolint:err113
+	//nolint:err113 // Test the fallback path with a one-off error value.
 	orig := errors.New("some other error")
 	err := m.handleQueueError(orig)
 	assert.Equal(t, orig, err)
@@ -152,7 +152,7 @@ func TestRetryDelayFunc_CustomHandler(t *testing.T) {
 		},
 	}
 	task := asynq.NewTask("test", nil)
-	//nolint:err113
+	//nolint:err113 // Test custom retry-delay handling with a one-off error value.
 	d := w.retryDelayFunc(3, errors.New("fail"), task)
 	assert.Equal(t, 3*time.Second, d)
 }
@@ -162,7 +162,7 @@ func TestRetryDelayFunc_DefaultFallback(t *testing.T) {
 		handlers: make(map[string]*Handler),
 	}
 	task := asynq.NewTask("test", nil)
-	//nolint:err113
+	//nolint:err113 // Test the default retry-delay fallback with a one-off error value.
 	d := w.retryDelayFunc(1, errors.New("fail"), task)
 	assert.Greater(t, d, time.Duration(0))
 }

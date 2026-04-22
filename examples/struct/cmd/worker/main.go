@@ -1,3 +1,4 @@
+// Package main shows how to run a worker for the structured example.
 package main
 
 import (

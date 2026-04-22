@@ -25,7 +25,7 @@ type RedisConfig struct {
 	TLSConfig    *tls.Config
 }
 
-// validate checks if the RedisConfig's fields are correctly set.
+// Validate checks if the RedisConfig fields are correctly set.
 func (c *RedisConfig) Validate() error {
 	if c.Addr == "" {
 		return ErrRedisEmptyAddress

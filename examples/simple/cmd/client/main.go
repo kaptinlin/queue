@@ -1,3 +1,4 @@
+// Package main shows how to enqueue a job with the simple example client.
 package main
 
 import (
