@@ -33,11 +33,11 @@ func (c *RedisConfig) Validate() error {
 	if c.Network != "tcp" && c.Network != "unix" {
 		return fmt.Errorf("%w: %q", ErrRedisUnsupportedNetwork, c.Network)
 	}
-	if _, _, err := net.SplitHostPort(c.Addr); err != nil && c.Network == "tcp" {
-		return fmt.Errorf("%w: %w", ErrRedisInvalidAddress, err)
-	}
 	if c.TLSConfig == nil && strings.HasPrefix(c.Addr, "rediss://") {
 		return ErrRedisTLSRequired
+	}
+	if _, _, err := net.SplitHostPort(c.Addr); err != nil && c.Network == "tcp" {
+		return fmt.Errorf("%w: %w", ErrRedisInvalidAddress, err)
 	}
 	return nil
 }

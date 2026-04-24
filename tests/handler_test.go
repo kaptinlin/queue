@@ -61,15 +61,18 @@ func TestHandlerProcessHandleExecuted(t *testing.T) {
 }
 
 func TestHandlerProcessWithTimeout(t *testing.T) {
+	t.Parallel()
+
 	handler := queue.NewHandler("test", func(ctx context.Context, job *queue.Job) error {
-		time.Sleep(2 * time.Second) // Simulate work that exceeds the timeout
+		<-ctx.Done()
+		time.Sleep(25 * time.Millisecond)
 		return nil
-	}, queue.WithJobTimeout(1*time.Second))
+	}, queue.WithJobTimeout(10*time.Millisecond))
 
 	job := &queue.Job{Type: "test", Payload: "data"}
 	err := handler.Process(context.Background(), job)
-	assert.Error(t, err, "Process() should return timeout error")
-	assert.Equal(t, "job processing exceeded timeout: context deadline exceeded", err.Error(), "Error message should match expected timeout message")
+	assert.ErrorIs(t, err, queue.ErrJobProcessingTimeout)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestHandlerProcessWithRateLimiter(t *testing.T) {

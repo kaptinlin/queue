@@ -28,6 +28,23 @@ func TestMemoryConfigProvider_UnregisterNotFound(t *testing.T) {
 	assert.ErrorIs(t, err, queue.ErrConfigJobNotFound)
 }
 
+func TestMemoryConfigProvider_UnregisterRemovesJob(t *testing.T) {
+	t.Parallel()
+
+	p := queue.NewMemoryConfigProvider()
+	job := queue.NewJob("test", nil)
+
+	id, err := p.RegisterCronJob("* * * * *", job)
+	require.NoError(t, err)
+
+	require.NoError(t, p.UnregisterJob(id))
+
+	configs, err := p.GetConfigs()
+	require.NoError(t, err)
+	assert.Empty(t, configs)
+	assert.ErrorIs(t, p.UnregisterJob(id), queue.ErrConfigJobNotFound)
+}
+
 func TestMemoryConfigProvider_GetConfigs(t *testing.T) {
 	p := queue.NewMemoryConfigProvider()
 

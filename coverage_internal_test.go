@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,11 +99,16 @@ func TestRedisValidate_UnixNetwork(t *testing.T) {
 }
 
 func TestNewJobFromAsynqTask(t *testing.T) {
-	task := asynq.NewTask("test:type",
-		[]byte(`{"key":"value"}`))
+	t.Parallel()
+
+	payload := []byte(`{"key":"value"}`)
+	task := asynq.NewTask("test:type", payload)
 	job, err := NewJobFromAsynqTask(task)
 	require.NoError(t, err)
 	assert.Equal(t, "test:type", job.Type)
+	if diff := cmp.Diff(payload, job.Payload); diff != "" {
+		t.Errorf("job payload mismatch (-want +got):\n%s", diff)
+	}
 }
 
 func TestConvertToAsynqOptions_NoOptions(t *testing.T) {
