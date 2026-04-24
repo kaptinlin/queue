@@ -1,6 +1,9 @@
 package queue
 
-import "sync"
+import (
+	"slices"
+	"sync"
+)
 
 // Group represents a collection of handlers with specific middleware applied.
 type Group struct {
@@ -20,7 +23,7 @@ func (g *Group) Use(middlewares ...MiddlewareFunc) {
 // Register configures and registers a handler for a specific job type within this group.
 func (g *Group) Register(jobType string, handle HandlerFunc, opts ...HandlerOption) error {
 	if len(g.middlewares) > 0 {
-		opts = append([]HandlerOption{WithMiddleware(g.middlewares...)}, opts...)
+		opts = slices.Concat([]HandlerOption{WithMiddleware(g.middlewares...)}, opts)
 	}
 
 	return g.worker.Register(jobType, handle, opts...)

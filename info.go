@@ -208,8 +208,7 @@ func toJobInfo(ti *asynq.TaskInfo, wi *asynq.WorkerInfo) *JobInfo {
 	}
 
 	if ti.Result != nil {
-		result := string(ti.Result)
-		jobInfo.Result = &result
+		jobInfo.Result = new(string(ti.Result))
 	}
 
 	return jobInfo

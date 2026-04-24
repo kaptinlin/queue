@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -70,4 +71,34 @@ func TestWorkerGroup_ReusesGroupByName(t *testing.T) {
 	assert.Same(t, email, sameEmail)
 	assert.NotSame(t, email, other)
 	assert.Same(t, w, email.worker)
+}
+
+func TestGroupRegister_ComposesGroupMiddlewareBeforeOptions(t *testing.T) {
+	w := &Worker{
+		groups:   make(map[string]*Group),
+		handlers: make(map[string]*Handler),
+	}
+	calls := make([]string, 0, 2)
+	middleware := func(name string) MiddlewareFunc {
+		return func(next HandlerFunc) HandlerFunc {
+			return func(ctx context.Context, job *Job) error {
+				calls = append(calls, name)
+				return next(ctx, job)
+			}
+		}
+	}
+
+	group := w.Group("email")
+	group.Use(middleware("group"))
+	err := group.Register(
+		"email:send",
+		func(context.Context, *Job) error { return nil },
+		WithMiddleware(middleware("handler")),
+	)
+	assert.NoError(t, err)
+
+	handler := w.handlers["email:send"]
+	assert.NotNil(t, handler)
+	assert.NoError(t, handler.Process(context.Background(), &Job{Type: "email:send"}))
+	assert.Equal(t, []string{"group", "handler"}, calls)
 }
