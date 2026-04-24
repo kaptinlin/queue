@@ -22,16 +22,20 @@ func TestFingerprint_AlreadySet(t *testing.T) {
 }
 
 func TestConvertToAsynqTask_SerializationError(t *testing.T) {
-	job := NewJob("test", make(chan int))
+	payload := make(chan int)
+	job := NewJob("test", payload)
 	_, _, err := job.ConvertToAsynqTask()
 	assert.ErrorIs(t, err, ErrSerializationFailure)
+	assert.ErrorContains(t, err, "cannot marshal from Go chan int")
 }
 
 func TestDecodePayload_SerializationError(t *testing.T) {
-	job := &Job{Type: "test", Payload: make(chan int)}
+	payload := make(chan int)
+	job := &Job{Type: "test", Payload: payload}
 	var out string
 	err := job.DecodePayload(&out)
 	assert.ErrorIs(t, err, ErrSerializationFailure)
+	assert.ErrorContains(t, err, "cannot marshal from Go chan int")
 }
 
 func TestProcessWithTimeout_ContextCanceled(t *testing.T) {

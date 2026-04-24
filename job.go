@@ -2,7 +2,6 @@ package queue
 
 import (
 	"crypto/md5" //nolint:gosec // Used only for stable, non-cryptographic job fingerprints.
-	"errors"
 	"fmt"
 	"time"
 
@@ -98,7 +97,7 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 
 	payloadBytes, err := json.Marshal(j.Payload)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to serialize payload: %w", errors.Join(ErrSerializationFailure, err))
+		return nil, nil, fmt.Errorf("failed to serialize payload: %w: %w", ErrSerializationFailure, err)
 	}
 
 	opts := j.ConvertToAsynqOptions()
@@ -152,7 +151,7 @@ func (j *Job) fingerprint() {
 func (j *Job) DecodePayload(v any) error {
 	payloadBytes, err := json.Marshal(j.Payload)
 	if err != nil {
-		return fmt.Errorf("failed to serialize payload: %w", errors.Join(ErrSerializationFailure, err))
+		return fmt.Errorf("failed to serialize payload: %w: %w", ErrSerializationFailure, err)
 	}
 	return json.Unmarshal(payloadBytes, v)
 }
