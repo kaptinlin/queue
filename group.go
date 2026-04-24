@@ -4,7 +4,6 @@ import "sync"
 
 // Group represents a collection of handlers with specific middleware applied.
 type Group struct {
-	name        string
 	worker      *Worker
 	middlewares []MiddlewareFunc
 	mu          sync.Mutex

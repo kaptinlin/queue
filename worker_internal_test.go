@@ -59,3 +59,15 @@ func TestIsFailure(t *testing.T) {
 	assert.False(t, w.isFailure(&ErrRateLimit{RetryAfter: time.Second}))
 	assert.False(t, w.isFailure(ErrTransientIssue))
 }
+
+func TestWorkerGroup_ReusesGroupByName(t *testing.T) {
+	w := &Worker{groups: make(map[string]*Group)}
+
+	email := w.Group("email")
+	sameEmail := w.Group("email")
+	other := w.Group("other")
+
+	assert.Same(t, email, sameEmail)
+	assert.NotSame(t, email, other)
+	assert.Same(t, w, email.worker)
+}

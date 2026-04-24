@@ -38,12 +38,11 @@ func NewJob(jobType string, payload any, opts ...JobOption) *Job {
 		Options: JobOptions{Queue: DefaultQueue}, // Use a default queue unless overridden.
 	}
 
-	// Apply provided configuration options to the job.
 	for _, opt := range opts {
 		opt(job)
 	}
 
-	job.fingerprint() // Generate a unique fingerprint for the job.
+	job.fingerprint()
 
 	return job
 }

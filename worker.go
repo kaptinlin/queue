@@ -124,7 +124,7 @@ func (w *Worker) Group(name string) *Group {
 		return group
 	}
 
-	group := &Group{name: name, worker: w}
+	group := &Group{worker: w}
 	w.groups[name] = group
 	return group
 }

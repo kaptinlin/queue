@@ -16,7 +16,6 @@ var ErrInvalidCronSpec = errors.New("invalid cron spec")
 type Scheduler struct {
 	taskManager    *asynq.PeriodicTaskManager
 	configProvider ConfigProvider
-	options        SchedulerOptions
 	done           chan struct{}
 	startErr       chan error
 }
@@ -140,7 +139,6 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 	return &Scheduler{
 		taskManager:    taskManager,
 		configProvider: configProvider,
-		options:        options,
 		done:           make(chan struct{}),
 		startErr:       make(chan error, 1),
 	}, nil
