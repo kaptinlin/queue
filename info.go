@@ -154,14 +154,11 @@ type JobInfo struct {
 	NextProcessAt *time.Time `json:"next_process_at,omitempty"`
 	LastFailedAt  *time.Time `json:"last_failed_at,omitempty"`
 	CompletedAt   *time.Time `json:"completed_at,omitempty"`
-	// Additional fields for active tasks.
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	DeadlineAt *time.Time `json:"deadline_at,omitempty"`
-	IsOrphaned bool       `json:"is_orphaned,omitempty"`
-	// Additional fields for aggregating tasks.
-	Group *string `json:"group,omitempty"`
-	// Result field for completed tasks.
-	Result *string `json:"result,omitempty"`
+	StartedAt     *time.Time `json:"started_at,omitempty"`
+	DeadlineAt    *time.Time `json:"deadline_at,omitempty"`
+	IsOrphaned    bool       `json:"is_orphaned,omitempty"`
+	Group         *string    `json:"group,omitempty"`
+	Result        *string    `json:"result,omitempty"`
 }
 
 // toJobInfo converts asynq.TaskInfo and optional asynq.WorkerInfo to JobInfo.
@@ -201,7 +198,7 @@ func toJobInfo(ti *asynq.TaskInfo, wi *asynq.WorkerInfo) *JobInfo {
 		jobInfo.Group = &ti.Group
 	}
 
-	if wi != nil { // Handling active tasks specific fields.
+	if wi != nil {
 		if !wi.Started.IsZero() {
 			jobInfo.StartedAt = &wi.Started
 		}

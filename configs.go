@@ -29,14 +29,14 @@ type ConfigProvider interface {
 // JobConfig holds the configuration for a scheduled job, including the job
 // definition and its cron schedule or interval specification.
 type JobConfig struct {
-	Job      *Job   // The job to be scheduled.
-	Schedule string // Holds either a cron spec or an interval in string format.
+	Job      *Job
+	Schedule string
 }
 
 // MemoryConfigProvider stores and provides job configurations for periodic execution.
 type MemoryConfigProvider struct {
 	mu   sync.Mutex
-	jobs map[string]JobConfig // Maps job identifiers to their configurations.
+	jobs map[string]JobConfig
 }
 
 // NewMemoryConfigProvider initializes a new instance of MemoryConfigProvider.

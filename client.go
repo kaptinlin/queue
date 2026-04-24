@@ -20,7 +20,7 @@ type Client struct {
 type ClientConfig struct {
 	ErrorHandler ClientErrorHandler // Custom handler for enqueue errors.
 	Retention    time.Duration      // Default retention duration for jobs.
-	Logger       Logger             // Logger instance for logging.
+	Logger       Logger
 }
 
 // ClientErrorHandler provides an interface for handling enqueue errors.
@@ -40,19 +40,17 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 	asynqClient := asynq.NewClient(redisConfig.ToAsynqRedisOpt())
 
 	config := &ClientConfig{
-		Logger:    NewDefaultLogger(), // Default to slog-based logger.
-		Retention: 0,                  // No retention by default.
-		// ErrorHandler is nil by default - no default error handler
+		Logger:    NewDefaultLogger(),
+		Retention: 0,
 	}
 
-	// Apply client options to configure the instance.
 	for _, opt := range opts {
 		opt(config)
 	}
 
 	return &Client{
 		asynqClient:  asynqClient,
-		errorHandler: config.ErrorHandler, // May be nil
+		errorHandler: config.ErrorHandler,
 		retention:    config.Retention,
 		logger:       config.Logger,
 	}, nil
@@ -115,11 +113,9 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 
 // handleJobError logs the error and calls the custom error handler if one is registered.
 func (c *Client) handleJobError(err error, job *Job, msg string) {
-	// Always log
 	c.logger.Error(fmt.Sprintf("%s: %v, job_id=%s, job_type=%s, fingerprint=%s",
 		msg, err, job.ID, job.Type, job.Fingerprint))
 
-	// Optional: call custom error handler if provided
 	if c.errorHandler != nil {
 		c.errorHandler.HandleError(err, job)
 	}

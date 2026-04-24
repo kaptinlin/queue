@@ -17,8 +17,8 @@ type Scheduler struct {
 	taskManager    *asynq.PeriodicTaskManager
 	configProvider ConfigProvider
 	options        SchedulerOptions
-	done           chan struct{} // closed by Stop to unblock Start
-	startErr       chan error    // receives the result of taskManager.Start
+	done           chan struct{}
+	startErr       chan error
 }
 
 // SchedulerOptions contains options for the Scheduler.
@@ -27,8 +27,8 @@ type SchedulerOptions struct {
 	Location        *time.Location
 	ConfigProvider  ConfigProvider
 	Logger          Logger
-	PreEnqueueFunc  func(job *Job)                // Pre-enqueue hook
-	PostEnqueueFunc func(job *JobInfo, err error) // Post-enqueue hook
+	PreEnqueueFunc  func(job *Job)
+	PostEnqueueFunc func(job *JobInfo, err error)
 }
 
 // SchedulerOption defines a function signature for configuring the Scheduler.
@@ -88,7 +88,7 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 	asynqClientOpt := redisConfig.ToAsynqRedisOpt()
 
 	options := SchedulerOptions{
-		Location:     time.UTC, // Default to UTC
+		Location:     time.UTC,
 		SyncInterval: 60 * time.Second,
 	}
 	for _, opt := range opts {

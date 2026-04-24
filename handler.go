@@ -17,14 +17,14 @@ type HandlerOption func(*Handler)
 
 // Handler encapsulates the configuration and logic for processing jobs.
 type Handler struct {
-	originalHandle HandlerFunc // The original job processing function.
-	Handle         HandlerFunc // Composed function including middleware.
+	originalHandle HandlerFunc
+	Handle         HandlerFunc
 	JobType        string
 	JobQueue       string
 	JobTimeout     time.Duration
 	RetryDelayFunc func(int, error) time.Duration
 	Limiter        *rate.Limiter
-	middlewares    []MiddlewareFunc // Middleware functions to apply.
+	middlewares    []MiddlewareFunc
 }
 
 // NewHandler initializes a new Handler with the provided job type, processing function, and options.
@@ -32,13 +32,11 @@ func NewHandler(jobType string, handle HandlerFunc, opts ...HandlerOption) *Hand
 	h := &Handler{
 		originalHandle: handle,
 		JobType:        jobType,
-		JobQueue:       DefaultQueue, // Default queue unless overridden.
+		JobQueue:       DefaultQueue,
 	}
-	// Apply configuration options to the handler.
 	for _, opt := range opts {
 		opt(h)
 	}
-	// Compose middleware onto the handler's function.
 	h.composeMiddleware()
 
 	return h
@@ -99,7 +97,6 @@ func (h *Handler) composeMiddleware() {
 	for i := range len(h.middlewares) {
 		composed = h.middlewares[len(h.middlewares)-1-i](composed)
 	}
-	// Update the handler function to include the composed middleware chain.
 	h.Handle = composed
 }
 

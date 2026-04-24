@@ -68,7 +68,6 @@ func DefaultRedisConfig() *RedisConfig {
 }
 
 // ToAsynqRedisOpt converts RedisConfig to asynq.RedisClientOpt.
-// This utility function bridges Redis configuration to asynq's expected format.
 func (c *RedisConfig) ToAsynqRedisOpt() asynq.RedisClientOpt {
 	return asynq.RedisClientOpt{
 		Network:      c.Network,

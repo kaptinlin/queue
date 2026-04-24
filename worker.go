@@ -124,7 +124,6 @@ func (w *Worker) Group(name string) *Group {
 		return group
 	}
 
-	// Create a new group and store it in the worker's groups map.
 	group := &Group{name: name, worker: w}
 	w.groups[name] = group
 	return group
