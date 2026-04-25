@@ -106,7 +106,7 @@ func (m *Manager) ListQueues() ([]*QueueInfo, error) {
 func (m *Manager) QueueInfo(queueName string) (*QueueInfo, error) {
 	qinfo, err := m.inspector.GetQueueInfo(queueName)
 	if err != nil {
-		return nil, m.handleQueueError(err)
+		return nil, handleQueueError(err)
 	}
 	return toQueueInfo(qinfo), nil
 }
@@ -115,7 +115,7 @@ func (m *Manager) QueueInfo(queueName string) (*QueueInfo, error) {
 func (m *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats, error) {
 	dstats, err := m.inspector.History(queueName, days)
 	if err != nil {
-		return nil, m.handleQueueError(err)
+		return nil, handleQueueError(err)
 	}
 
 	dailyStats := make([]*QueueDailyStats, len(dstats))
@@ -133,7 +133,7 @@ func (m *Manager) DeleteQueue(queueName string, force bool) error {
 		return ErrQueueNotEmpty
 	}
 	if err != nil {
-		return m.handleQueueError(err)
+		return handleQueueError(err)
 	}
 	return nil
 }
@@ -141,7 +141,7 @@ func (m *Manager) DeleteQueue(queueName string, force bool) error {
 // PauseQueue pauses a queue by its name.
 func (m *Manager) PauseQueue(queueName string) error {
 	if err := m.inspector.PauseQueue(queueName); err != nil {
-		return m.handleQueueError(err)
+		return handleQueueError(err)
 	}
 	return nil
 }
@@ -149,7 +149,7 @@ func (m *Manager) PauseQueue(queueName string) error {
 // ResumeQueue resumes a paused queue by its name.
 func (m *Manager) ResumeQueue(queueName string) error {
 	if err := m.inspector.UnpauseQueue(queueName); err != nil {
-		return m.handleQueueError(err)
+		return handleQueueError(err)
 	}
 	return nil
 }
@@ -284,9 +284,9 @@ func batchOperation[T any](items []T, operation func(T) error) (succeeded, faile
 		if opErr := operation(item); opErr != nil {
 			failed = append(failed, item)
 			errs = append(errs, opErr)
-		} else {
-			succeeded = append(succeeded, item)
+			continue
 		}
+		succeeded = append(succeeded, item)
 	}
 
 	if len(errs) > 0 {
@@ -464,13 +464,13 @@ func (m *Manager) RedisInfo(ctx context.Context) (*RedisInfo, error) {
 	case *redis.ClusterClient:
 		return m.getRedisClusterInfo(ctx, client)
 	case *redis.Client:
-		return m.getRedisStandardInfo(ctx, client)
+		return getRedisStandardInfo(ctx, client)
 	default:
 		return nil, ErrRedisClientNotSupported
 	}
 }
 
-func (m *Manager) getRedisStandardInfo(ctx context.Context, client *redis.Client) (*RedisInfo, error) {
+func getRedisStandardInfo(ctx context.Context, client *redis.Client) (*RedisInfo, error) {
 	rawInfo, err := client.Info(ctx, "all").Result()
 	if err != nil {
 		return nil, err
@@ -543,7 +543,6 @@ func (m *Manager) fetchQueueLocations() ([]*QueueLocation, error) {
 	return locations, nil
 }
 
-// parseRedisInfo parses the INFO command's output into a key-value map.
 func parseRedisInfo(infoStr string) map[string]string {
 	info := make(map[string]string)
 	for line := range strings.SplitSeq(infoStr, "\r\n") {
@@ -554,7 +553,7 @@ func parseRedisInfo(infoStr string) map[string]string {
 	return info
 }
 
-func (m *Manager) handleQueueError(err error) error {
+func handleQueueError(err error) error {
 	if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
 		return ErrQueueNotFound
 	}

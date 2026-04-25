@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -17,6 +18,16 @@ func TestParseRedisInfo(t *testing.T) {
 func TestParseRedisInfo_Empty(t *testing.T) {
 	info := parseRedisInfo("")
 	assert.Empty(t, info)
+}
+
+func TestHandleQueueError_AsynqQueueNotFound(t *testing.T) {
+	assert.ErrorIs(t, handleQueueError(asynq.ErrQueueNotFound), ErrQueueNotFound)
+}
+
+func TestHandleQueueError_StringQueueNotFound(t *testing.T) {
+	//nolint:err113 // Test the string-based queue-not-found matcher.
+	err := errors.New("queue does not exist")
+	assert.ErrorIs(t, handleQueueError(err), ErrQueueNotFound)
 }
 
 func TestIsQueueNotFoundError_True(t *testing.T) {
