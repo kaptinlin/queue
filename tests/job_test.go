@@ -2,12 +2,12 @@ package tests
 
 import (
 	"context"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/go-json-experiment/json"
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -20,7 +20,9 @@ func TestNewJob(t *testing.T) {
 	job := queue.NewJob(jobType, payload)
 
 	assert.Equal(t, jobType, job.Type, "Job type should match")
-	assert.True(t, reflect.DeepEqual(job.Payload, payload), "Job payload should match")
+	if diff := cmp.Diff(payload, job.Payload); diff != "" {
+		t.Errorf("Job payload mismatch (-want +got):\n%s", diff)
+	}
 }
 
 func TestJob_ConvertToAsynqTask(t *testing.T) {
@@ -37,7 +39,9 @@ func TestJob_ConvertToAsynqTask(t *testing.T) {
 	err = json.Unmarshal(task.Payload(), &taskPayload)
 	require.NoError(t, err, "json.Unmarshal should not fail")
 
-	assert.True(t, reflect.DeepEqual(taskPayload, payload), "Task payload should match job payload")
+	if diff := cmp.Diff(payload, taskPayload); diff != "" {
+		t.Errorf("Task payload mismatch (-want +got):\n%s", diff)
+	}
 }
 
 func TestJob_DecodePayload(t *testing.T) {
@@ -112,7 +116,9 @@ func TestJobPayloadStruct(t *testing.T) {
 	err = job.DecodePayload(&decodedPayload)
 	require.NoError(t, err, "Failed to decode payload")
 
-	assert.True(t, reflect.DeepEqual(decodedPayload, payload), "Decoded payload should match original")
+	if diff := cmp.Diff(payload, decodedPayload); diff != "" {
+		t.Errorf("Decoded payload mismatch (-want +got):\n%s", diff)
+	}
 }
 
 // TestJobPayloadNestedStruct with corrections.
@@ -131,7 +137,9 @@ func TestJobPayloadNestedStruct(t *testing.T) {
 	err = job.DecodePayload(&decodedPayload)
 	require.NoError(t, err, "Failed to decode payload")
 
-	assert.True(t, reflect.DeepEqual(decodedPayload, payload), "Decoded payload should match original")
+	if diff := cmp.Diff(payload, decodedPayload); diff != "" {
+		t.Errorf("Decoded payload mismatch (-want +got):\n%s", diff)
+	}
 }
 func TestWriteResultAndRetrieve(t *testing.T) {
 	redisConfig := getRedisConfig()

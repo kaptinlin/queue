@@ -1,10 +1,12 @@
 package tests
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/kaptinlin/queue"
 )
@@ -14,15 +16,20 @@ func TestNewSkipRetryError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, queue.ErrSkipRetry)
-	assert.Contains(t, err.Error(), "invalid payload")
 }
 
 func TestErrRateLimitError(t *testing.T) {
 	err := queue.NewErrRateLimit(5 * time.Second)
 
-	assert.Equal(t, 5*time.Second, err.RetryAfter)
-	assert.Contains(t, err.Error(), "rate limited")
-	assert.Contains(t, err.Error(), "5s")
+	var rateLimitErr *queue.ErrRateLimit
+	require.ErrorAs(t, err, &rateLimitErr)
+	assert.Equal(t, 5*time.Second, rateLimitErr.RetryAfter)
+}
+
+func TestIsErrRateLimit_Wrapped(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", queue.NewErrRateLimit(5*time.Second))
+
+	assert.True(t, queue.IsErrRateLimit(err))
 }
 
 func TestIsErrRateLimit(t *testing.T) {

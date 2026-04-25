@@ -61,7 +61,7 @@ func TestWorkerRegisterHandler_Duplicate(t *testing.T) {
 	require.NoError(t, err)
 
 	err = worker.Register("dup_job", h)
-	assert.ErrorContains(t, err, "handler already registered")
+	assert.ErrorIs(t, err, queue.ErrHandlerAlreadyRegistered)
 }
 
 // --- Worker.Start already started ---

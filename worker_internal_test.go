@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -100,5 +101,8 @@ func TestGroupRegister_ComposesGroupMiddlewareBeforeOptions(t *testing.T) {
 	handler := w.handlers["email:send"]
 	assert.NotNil(t, handler)
 	assert.NoError(t, handler.Process(context.Background(), &Job{Type: "email:send"}))
-	assert.Equal(t, []string{"group", "handler"}, calls)
+	want := []string{"group", "handler"}
+	if diff := cmp.Diff(want, calls); diff != "" {
+		t.Errorf("middleware calls mismatch (-want +got):\n%s", diff)
+	}
 }
