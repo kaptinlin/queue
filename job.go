@@ -176,11 +176,11 @@ func (j *Job) WriteResult(result any) error {
 
 	resultBytes, err := json.Marshal(result)
 	if err != nil {
-		return fmt.Errorf("failed to serialize result: %w", err)
+		return fmt.Errorf("failed to serialize result: %w: %w", ErrSerializationFailure, err)
 	}
 
 	if _, err = j.resultWriter.Write(resultBytes); err != nil {
-		return fmt.Errorf("failed to write result: %w", err)
+		return fmt.Errorf("failed to write result: %w: %w", ErrFailedToWriteResult, err)
 	}
 
 	return nil
