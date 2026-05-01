@@ -267,11 +267,7 @@ func (m *Manager) RunJobsByState(queue string, state JobState) (int, error) {
 		return 0, ErrUnsupportedJobStateForAction
 	}
 
-	if err != nil {
-		return 0, err
-	}
-
-	return count, nil
+	return count, err
 }
 
 // batchOperation performs a batch operation on items and returns succeeded, failed items, and aggregated errors.
@@ -336,10 +332,7 @@ func (m *Manager) ArchiveJobsByState(queue string, state JobState) (int, error) 
 		return 0, ErrUnsupportedJobStateForAction
 	}
 
-	if err != nil {
-		return 0, err
-	}
-	return count, nil
+	return count, err
 }
 
 // BatchArchiveJobs archives multiple jobs identified by their IDs.
@@ -430,10 +423,7 @@ func (m *Manager) DeleteJobsByState(queue string, state JobState) (int, error) {
 		return 0, ErrUnsupportedJobStateForAction
 	}
 
-	if err != nil {
-		return 0, err
-	}
-	return count, nil
+	return count, err
 }
 
 // BatchDeleteJobs deletes multiple jobs identified by their IDs.

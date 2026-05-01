@@ -32,20 +32,26 @@ func IsValidJobState(state JobState) bool {
 	}
 }
 
-var taskStateToJobStateMap = map[asynq.TaskState]JobState{
-	asynq.TaskStateActive:      StateActive,
-	asynq.TaskStatePending:     StatePending,
-	asynq.TaskStateScheduled:   StateScheduled,
-	asynq.TaskStateRetry:       StateRetry,
-	asynq.TaskStateArchived:    StateArchived,
-	asynq.TaskStateCompleted:   StateCompleted,
-	asynq.TaskStateAggregating: StateAggregating,
-}
-
 // toJobState converts an asynq.TaskState to a JobState.
 // It returns the mapped state and true if the mapping exists,
 // or an empty JobState and false for unknown task states.
 func toJobState(taskState asynq.TaskState) (JobState, bool) {
-	jobState, ok := taskStateToJobStateMap[taskState]
-	return jobState, ok
+	switch taskState {
+	case asynq.TaskStateActive:
+		return StateActive, true
+	case asynq.TaskStatePending:
+		return StatePending, true
+	case asynq.TaskStateScheduled:
+		return StateScheduled, true
+	case asynq.TaskStateRetry:
+		return StateRetry, true
+	case asynq.TaskStateArchived:
+		return StateArchived, true
+	case asynq.TaskStateCompleted:
+		return StateCompleted, true
+	case asynq.TaskStateAggregating:
+		return StateAggregating, true
+	default:
+		return "", false
+	}
 }
