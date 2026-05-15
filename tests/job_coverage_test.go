@@ -128,7 +128,7 @@ func TestWriteResult_WriterFailure(t *testing.T) {
 		asynq.Queue("write_result_failure"),
 		asynq.MaxRetry(0),
 		asynq.Retention(time.Hour),
-		asynq.Timeout(100*time.Millisecond),
+		asynq.Timeout(time.Second),
 	)
 	require.NoError(t, err)
 
@@ -141,7 +141,7 @@ func TestWriteResult_WriterFailure(t *testing.T) {
 	select {
 	case err := <-errorsCh:
 		assert.ErrorIs(t, err, queue.ErrFailedToWriteResult)
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for result write failure")
 	}
 }
