@@ -12,6 +12,15 @@ vars:
       {{.GOLANGCI_LINT_BINARY}} version --format short 2>/dev/null ||
       {{.GOLANGCI_LINT_BINARY}} version --short 2>/dev/null ||
       echo "not-installed"
+  DOCKER_COMPOSE:
+    sh: |
+      if command -v docker-compose >/dev/null 2>&1; then
+        echo docker-compose
+      elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+      else
+        echo "missing-docker-compose"
+      fi
 
 env:
   GOBIN: '{{.GOBIN}}'
@@ -66,17 +75,22 @@ tasks:
         if redis-cli ping 2>/dev/null | grep -q PONG; then
           echo "✅ Redis is already running"
         else
+          if [ "{{.DOCKER_COMPOSE}}" = "missing-docker-compose" ]; then
+            echo "❌ Docker Compose is required to start Redis" >&2
+            exit 127
+          fi
+
           echo "🚀 Starting Redis service via Docker..."
-          docker-compose up -d
+          {{.DOCKER_COMPOSE}} up -d
           echo "⏳ Waiting for Redis service to be ready..."
           timeout=30
           counter=0
-          until docker-compose exec redis redis-cli ping 2>/dev/null | grep -q PONG; do
+          until {{.DOCKER_COMPOSE}} exec redis redis-cli ping 2>/dev/null | grep -q PONG; do
             sleep 1
             counter=$((counter + 1))
             if [ $counter -gt $timeout ]; then
               echo "❌ Timeout waiting for Redis service"
-              docker-compose down
+              {{.DOCKER_COMPOSE}} down
               exit 1
             fi
           done
@@ -86,8 +100,13 @@ tasks:
   redis-stop:
     desc: Stop Redis service
     cmds:
-      - echo "🧹 Stopping Redis service..."
-      - docker-compose down
+      - |
+        if [ "{{.DOCKER_COMPOSE}}" = "missing-docker-compose" ]; then
+          echo "❌ Docker Compose is required to stop Redis" >&2
+          exit 127
+        fi
+        echo "🧹 Stopping Redis service..."
+        {{.DOCKER_COMPOSE}} down
 
   test-with-redis:
     desc: Start Redis, run tests, then cleanup

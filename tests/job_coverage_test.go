@@ -103,17 +103,15 @@ func TestWriteResult_WriterFailure(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	client, err := queue.NewClient(redisConfig)
-	require.NoError(t, err)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	client := asynq.NewClient(redisConfig.ToAsynqRedisOpt())
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	var once sync.Once
 	started := make(chan struct{})
 	errorsCh := make(chan error, 1)
-	release := make(chan struct{})
 	err = worker.Register("write_result_failure", func(ctx context.Context, job *queue.Job) error {
 		once.Do(func() { close(started) })
-		<-release
+		<-ctx.Done()
 		err := job.WriteResult("result")
 		errorsCh <- err
 		return err
@@ -125,12 +123,12 @@ func TestWriteResult_WriterFailure(t *testing.T) {
 	}()
 	defer func() { assert.NoError(t, worker.Stop()) }()
 
-	deadline := time.Now().Add(500 * time.Millisecond)
-	_, err = client.Enqueue("write_result_failure", nil,
-		queue.WithQueue("write_result_failure"),
-		queue.WithMaxRetries(0),
-		queue.WithRetention(time.Hour),
-		queue.WithDeadline(&deadline),
+	task := asynq.NewTask("write_result_failure", []byte(`{}`))
+	_, err = client.Enqueue(task,
+		asynq.Queue("write_result_failure"),
+		asynq.MaxRetry(0),
+		asynq.Retention(time.Hour),
+		asynq.Timeout(100*time.Millisecond),
 	)
 	require.NoError(t, err)
 
@@ -139,10 +137,6 @@ func TestWriteResult_WriterFailure(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for worker to start result writer test")
 	}
-	if wait := time.Until(deadline) + 50*time.Millisecond; wait > 0 {
-		time.Sleep(wait)
-	}
-	close(release)
 
 	select {
 	case err := <-errorsCh:
