@@ -66,6 +66,64 @@ func TestWorkerRegisterHandler(t *testing.T) {
 	require.NoError(t, err, "Failed to register handler using RegisterHandler")
 }
 
+func TestWorkerProcessesStringPayload(t *testing.T) {
+	redisConfig := getRedisConfig()
+	const queueName = "worker_string_payload_test"
+	const jobType = "worker_string_payload"
+
+	manager := setupTestManager()
+	defer func() {
+		_ = manager.DeleteQueue(queueName, true)
+	}()
+
+	worker, err := queue.NewWorker(redisConfig,
+		queue.WithWorkerQueue(queueName, 1),
+		queue.WithWorkerConcurrency(1),
+	)
+	require.NoError(t, err, "Failed to create worker")
+
+	processed := make(chan string, 1)
+	err = worker.Register(jobType, func(_ context.Context, job *queue.Job) error {
+		var payload string
+		if err := job.DecodePayload(&payload); err != nil {
+			return err
+		}
+		processed <- payload
+		return nil
+	}, queue.WithJobQueue(queueName))
+	require.NoError(t, err, "Failed to register string payload handler")
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- worker.Start()
+	}()
+	defer func() {
+		assert.NoError(t, worker.Stop(), "Failed to stop worker")
+		select {
+		case err := <-startErr:
+			assert.NoError(t, err, "Worker failed to start")
+		case <-time.After(2 * time.Second):
+			t.Error("timed out waiting for worker to stop")
+		}
+	}()
+
+	client, err := queue.NewClient(redisConfig)
+	require.NoError(t, err, "Failed to create client")
+	defer func() {
+		assert.NoError(t, client.Stop(), "Failed to stop client")
+	}()
+
+	_, err = client.Enqueue(jobType, "hello", queue.WithQueue(queueName))
+	require.NoError(t, err, "Failed to enqueue string payload job")
+
+	select {
+	case got := <-processed:
+		assert.Equal(t, "hello", got)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for string payload job")
+	}
+}
+
 func TestWorkerWithWorkerErrorHandler(t *testing.T) {
 	redisConfig := getRedisConfig() // Ensure this returns a valid configuration
 

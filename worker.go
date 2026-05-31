@@ -215,7 +215,7 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 			return &ErrRateLimit{RetryAfter: DefaultRateLimitRetryAfter}
 		}
 
-		var payload map[string]any
+		var payload any
 		if err := json.Unmarshal(task.Payload(), &payload); err != nil {
 			return err
 		}
