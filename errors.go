@@ -14,6 +14,8 @@ var (
 	ErrNoJobQueueSpecified = errors.New("job requires a specified queue")
 	// ErrNoJobTypeSpecified is returned when a job has no type assigned.
 	ErrNoJobTypeSpecified = errors.New("job requires a specified type")
+	// ErrInvalidAsynqTask is returned when an Asynq task cannot be converted to a job.
+	ErrInvalidAsynqTask = errors.New("invalid asynq task")
 	// ErrJobExceededDeadline is returned when a job fails to complete
 	// before its deadline.
 	ErrJobExceededDeadline = errors.New("job failed to complete by deadline")

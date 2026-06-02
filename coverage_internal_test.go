@@ -711,6 +711,29 @@ func TestNewJobFromAsynqTask(t *testing.T) {
 	}
 }
 
+func TestNewJobFromAsynqTask_AllowsDecodePayload(t *testing.T) {
+	t.Parallel()
+
+	task := asynq.NewTask("test:type", []byte(`{"key":"value"}`))
+	job, err := NewJobFromAsynqTask(task)
+	require.NoError(t, err)
+
+	var got struct {
+		Key string `json:"key"`
+	}
+	err = job.DecodePayload(&got)
+	require.NoError(t, err)
+	assert.Equal(t, "value", got.Key)
+}
+
+func TestNewJobFromAsynqTask_NilTask(t *testing.T) {
+	t.Parallel()
+
+	job, err := NewJobFromAsynqTask(nil)
+	assert.Nil(t, job)
+	assert.ErrorIs(t, err, ErrInvalidAsynqTask)
+}
+
 func TestConvertToAsynqOptions_NoOptions(t *testing.T) {
 	t.Parallel()
 

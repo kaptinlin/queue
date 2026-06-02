@@ -15,6 +15,7 @@ type Job struct {
 	Fingerprint  string              `json:"fingerprint"` // Unique hash for the job based on its type and payload.
 	Type         string              `json:"type"`        // Type of job, used for handler mapping.
 	Payload      any                 `json:"payload"`     // Job data.
+	rawPayload   []byte              `json:"-"`           // Original JSON payload bytes for reconstructed tasks.
 	resultWriter *asynq.ResultWriter `json:"-"`           // Result writer for the job.
 	Options      JobOptions          `json:"options"`     // Execution options for the job.
 }
@@ -95,7 +96,7 @@ func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
 		return nil, nil, ErrNoJobQueueSpecified
 	}
 
-	payloadBytes, err := json.Marshal(j.Payload)
+	payloadBytes, err := j.payloadBytes()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to serialize payload: %w: %w", ErrSerializationFailure, err)
 	}
@@ -139,7 +140,7 @@ func (j *Job) fingerprint() {
 	hash := md5.New() //nolint:gosec // Used only for stable, non-cryptographic job fingerprints.
 	hash.Write([]byte(j.Type))
 
-	payloadBytes, _ := json.Marshal(j.Payload)
+	payloadBytes, _ := j.payloadBytes()
 	hash.Write(payloadBytes)
 	optionsBytes, _ := json.Marshal(j.Options)
 	hash.Write(optionsBytes)
@@ -147,9 +148,16 @@ func (j *Job) fingerprint() {
 	j.Fingerprint = fmt.Sprintf("%x", hash.Sum(nil))
 }
 
+func (j *Job) payloadBytes() ([]byte, error) {
+	if j.rawPayload != nil {
+		return j.rawPayload, nil
+	}
+	return json.Marshal(j.Payload)
+}
+
 // DecodePayload decodes the job payload into a given struct.
 func (j *Job) DecodePayload(v any) error {
-	payloadBytes, err := json.Marshal(j.Payload)
+	payloadBytes, err := j.payloadBytes()
 	if err != nil {
 		return fmt.Errorf("failed to serialize payload: %w: %w", ErrSerializationFailure, err)
 	}
@@ -189,9 +197,15 @@ func (j *Job) WriteResult(result any) error {
 // NewJobFromAsynqTask creates a Job from an existing asynq.Task.
 // The returned Job contains the task's type and raw payload bytes.
 func NewJobFromAsynqTask(task *asynq.Task) (*Job, error) {
+	if task == nil {
+		return nil, ErrInvalidAsynqTask
+	}
+
+	payload := append([]byte{}, task.Payload()...)
 	job := &Job{
-		Type:    task.Type(),
-		Payload: task.Payload(),
+		Type:       task.Type(),
+		Payload:    payload,
+		rawPayload: payload,
 	}
 
 	return job, nil
