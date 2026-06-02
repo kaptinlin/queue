@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"os/signal"
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/go-json-experiment/json"
@@ -40,6 +43,7 @@ type Worker struct {
 	limiter      *rate.Limiter
 	middlewares  []MiddlewareFunc
 	logger       Logger
+	stopCh       chan struct{}
 }
 
 // WorkerErrorHandler defines an interface for handling errors that occur during job processing.
@@ -101,6 +105,7 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 		errorHandler: config.ErrorHandler,
 		limiter:      config.Limiter,
 		logger:       config.Logger,
+		stopCh:       make(chan struct{}),
 	}
 	worker.setupAsynqServer(redisConfig, config)
 
@@ -167,13 +172,39 @@ func (w *Worker) Start() error {
 	mux := asynq.NewServeMux()
 	w.setupHandlers(mux)
 
-	return w.asynqServer.Run(mux)
+	if err := w.asynqServer.Start(mux); err != nil {
+		w.started.Store(false)
+		return err
+	}
+	w.logger.Info("Send signal TSTP to stop processing new tasks")
+	w.logger.Info("Send signal TERM or INT to terminate the process")
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGTSTP)
+	defer signal.Stop(sigCh)
+
+	for {
+		select {
+		case sig := <-sigCh:
+			if sig == syscall.SIGTSTP {
+				w.asynqServer.Stop()
+				continue
+			}
+			return w.Stop()
+		case <-w.stopCh:
+			return nil
+		}
+	}
 }
 
 // Stop gracefully shuts down the worker server, ensuring atomic update of the started status.
 func (w *Worker) Stop() error {
+	if !w.started.CompareAndSwap(true, false) {
+		return nil
+	}
+
 	w.asynqServer.Shutdown()
-	w.started.Store(false)
+	close(w.stopCh)
 
 	return nil
 }
