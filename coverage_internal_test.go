@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
@@ -21,7 +22,6 @@ type recordingLogger struct {
 func (l *recordingLogger) Debug(...any) {}
 func (l *recordingLogger) Info(...any)  {}
 func (l *recordingLogger) Warn(...any)  {}
-func (l *recordingLogger) Fatal(...any) {}
 func (l *recordingLogger) Error(args ...any) {
 	l.errors = append(l.errors, args...)
 }
@@ -34,6 +34,16 @@ type recordingErrorHandler struct {
 func (h *recordingErrorHandler) HandleError(err error, job *Job) {
 	h.err = err
 	h.job = job
+}
+
+type recordingWorkerErrorHandler struct {
+	err      error
+	delivery *Delivery
+}
+
+func (h *recordingWorkerErrorHandler) HandleError(err error, delivery *Delivery) {
+	h.err = err
+	h.delivery = delivery
 }
 
 func TestNewClient_ValidatesConfig(t *testing.T) {
@@ -82,17 +92,30 @@ func TestClientEnqueue_ConversionErrorReportsHandler(t *testing.T) {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		assert.NoError(t, client.Stop())
+		assert.NoError(t, client.Close())
 	})
 
 	id, err := client.Enqueue("", map[string]string{"k": "v"})
 
 	assert.Empty(t, id)
 	assert.ErrorIs(t, err, ErrNoJobTypeSpecified)
-	require.NotNil(t, handler.job)
+	assert.Nil(t, handler.job)
 	assert.ErrorIs(t, handler.err, ErrNoJobTypeSpecified)
-	assert.Equal(t, "", handler.job.Type)
 	assert.NotEmpty(t, logger.errors)
+}
+
+func TestNewClient_NilLoggerUsesDefault(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClient(DefaultRedisConfig(), WithClientLogger(nil))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close())
+	})
+
+	id, err := client.Enqueue("", nil)
+	assert.Empty(t, id)
+	assert.ErrorIs(t, err, ErrNoJobTypeSpecified)
 }
 
 func TestClientEnqueueJob_ConversionErrorReportsHandler(t *testing.T) {
@@ -106,15 +129,13 @@ func TestClientEnqueueJob_ConversionErrorReportsHandler(t *testing.T) {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		assert.NoError(t, client.Stop())
+		assert.NoError(t, client.Close())
 	})
-	job := NewJob("test", make(chan int))
-
-	id, err := client.EnqueueJob(job)
+	id, err := client.Enqueue("test", make(chan int))
 
 	assert.Empty(t, id)
 	assert.ErrorIs(t, err, ErrSerializationFailure)
-	assert.Same(t, job, handler.job)
+	assert.Nil(t, handler.job)
 	assert.ErrorIs(t, handler.err, ErrSerializationFailure)
 	assert.NotEmpty(t, logger.errors)
 }
@@ -123,27 +144,42 @@ func TestWorkerOptionsApplyToConfig(t *testing.T) {
 	t.Parallel()
 
 	logger := &recordingLogger{}
-	handler := &recordingErrorHandler{}
+	handler := &recordingWorkerErrorHandler{}
 	limiter := rate.NewLimiter(rate.Limit(2), 3)
 	queues := map[string]int{"critical": 10, "default": 1}
-	config := &WorkerConfig{}
+	wantQueues := map[string]int{"critical": 10, "default": 1}
+	config := &workerConfig{}
 
-	WithWorkerLogger(logger)(config)
-	WithWorkerStopTimeout(5 * time.Second)(config)
-	WithWorkerRateLimiter(limiter)(config)
-	WithWorkerConcurrency(4)(config)
-	WithWorkerQueue("low", 1)(config)
-	WithWorkerQueues(queues)(config)
-	WithWorkerErrorHandler(handler)(config)
+	WithWorkerLogger(logger).applyWorkerOption(config)
+	WithWorkerStopTimeout(5 * time.Second).applyWorkerOption(config)
+	WithWorkerRateLimiter(limiter).applyWorkerOption(config)
+	WithWorkerConcurrency(4).applyWorkerOption(config)
+	WithWorkerQueue("low", 1).applyWorkerOption(config)
+	WithWorkerQueues(queues).applyWorkerOption(config)
+	WithWorkerErrorHandler(handler).applyWorkerOption(config)
+	queues["critical"] = 99
 
 	assert.Same(t, logger, config.Logger)
 	assert.Equal(t, 5*time.Second, config.StopTimeout)
 	assert.Same(t, limiter, config.Limiter)
 	assert.Equal(t, 4, config.Concurrency)
-	if diff := cmp.Diff(queues, config.Queues); diff != "" {
+	if diff := cmp.Diff(wantQueues, config.Queues); diff != "" {
 		t.Errorf("worker queues mismatch (-want +got):\n%s", diff)
 	}
 	assert.Same(t, handler, config.ErrorHandler)
+}
+
+func TestWorkerRunCanceledContext(t *testing.T) {
+	t.Parallel()
+
+	worker, err := NewWorker(DefaultRedisConfig())
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err = worker.Run(ctx)
+	assert.ErrorIs(t, err, context.Canceled)
 }
 
 func TestNewWorker_ValidatesConfig(t *testing.T) {
@@ -187,29 +223,31 @@ func TestNewWorker_ValidatesConfig(t *testing.T) {
 	}
 }
 
+func TestNewWorker_NilLoggerUsesDefault(t *testing.T) {
+	t.Parallel()
+
+	worker, err := NewWorker(DefaultRedisConfig(), WithWorkerLogger(nil))
+	require.NoError(t, err)
+	assert.NotNil(t, worker)
+}
+
 func TestSchedulerOptionsApplyToConfig(t *testing.T) {
 	t.Parallel()
 
 	provider := NewMemoryConfigProvider()
 	logger := &recordingLogger{}
 	loc := time.FixedZone("test", 3600)
-	pre := func(*Job) {}
-	post := func(*JobInfo, error) {}
-	options := &SchedulerOptions{}
+	options := &schedulerOptions{}
 
-	WithSyncInterval(5 * time.Second)(options)
-	WithSchedulerLocation(loc)(options)
-	WithConfigProvider(provider)(options)
-	WithSchedulerLogger(logger)(options)
-	WithPreEnqueueFunc(pre)(options)
-	WithPostEnqueueFunc(post)(options)
+	WithSyncInterval(5 * time.Second).applySchedulerOption(options)
+	WithSchedulerLocation(loc).applySchedulerOption(options)
+	WithConfigProvider(provider).applySchedulerOption(options)
+	WithSchedulerLogger(logger).applySchedulerOption(options)
 
 	assert.Equal(t, 5*time.Second, options.SyncInterval)
 	assert.Same(t, loc, options.Location)
 	assert.Same(t, provider, options.ConfigProvider)
 	assert.Same(t, logger, options.Logger)
-	require.NotNil(t, options.PreEnqueueFunc)
-	require.NotNil(t, options.PostEnqueueFunc)
 }
 
 func TestNewScheduler_ValidatesConfig(t *testing.T) {
@@ -246,6 +284,23 @@ func TestNewScheduler_ValidatesConfig(t *testing.T) {
 	}
 }
 
+func TestNewScheduler_NilLoggerUsesDefault(t *testing.T) {
+	t.Parallel()
+
+	scheduler, err := NewScheduler(DefaultRedisConfig(), WithSchedulerLogger(nil))
+	require.NoError(t, err)
+	assert.NotNil(t, scheduler)
+}
+
+func TestNewScheduler_InvalidSyncInterval(t *testing.T) {
+	t.Parallel()
+
+	scheduler, err := NewScheduler(DefaultRedisConfig(), WithSyncInterval(0))
+
+	assert.Nil(t, scheduler)
+	assert.ErrorIs(t, err, ErrInvalidSyncInterval)
+}
+
 func TestNewScheduler_AppliesConfigProvider(t *testing.T) {
 	t.Parallel()
 
@@ -253,7 +308,7 @@ func TestNewScheduler_AppliesConfigProvider(t *testing.T) {
 	scheduler, err := NewScheduler(DefaultRedisConfig(), WithConfigProvider(provider))
 	require.NoError(t, err)
 
-	id, err := scheduler.RegisterCron("*/5 * * * *", "cron:test", nil)
+	id, err := scheduler.RegisterCron("cron:test", "*/5 * * * *", "cron:test", nil)
 	require.NoError(t, err)
 	assert.NotEmpty(t, id)
 
@@ -269,14 +324,14 @@ func TestSchedulerRegisterMethodsUseConfigProvider(t *testing.T) {
 	scheduler, err := NewScheduler(DefaultRedisConfig(), WithConfigProvider(provider))
 	require.NoError(t, err)
 
-	_, err = scheduler.RegisterCron("wrong cron", "bad", nil)
+	_, err = scheduler.RegisterCron("bad", "wrong cron", "bad", nil)
 	assert.ErrorIs(t, err, ErrInvalidCronSpec)
 
-	cronID, err := scheduler.RegisterCron("*/5 * * * *", "cron:test", nil)
+	cronID, err := scheduler.RegisterCron("cron:test", "*/5 * * * *", "cron:test", nil)
 	require.NoError(t, err)
 	assert.NotEmpty(t, cronID)
 
-	periodicID, err := scheduler.RegisterPeriodic(2*time.Second, "periodic:test", nil)
+	periodicID, err := scheduler.RegisterPeriodic("periodic:test", 2*time.Second, "periodic:test", nil)
 	require.NoError(t, err)
 	assert.NotEmpty(t, periodicID)
 
@@ -285,7 +340,7 @@ func TestSchedulerRegisterMethodsUseConfigProvider(t *testing.T) {
 	assert.Len(t, configs, 2)
 
 	require.NoError(t, scheduler.UnregisterCronJob(cronID))
-	assert.ErrorIs(t, scheduler.UnregisterCronJob(cronID), ErrConfigJobNotFound)
+	assert.ErrorIs(t, scheduler.UnregisterCronJob(cronID), ErrScheduleNotFound)
 }
 
 func TestRedisConfigValidateBoundaries(t *testing.T) {
@@ -343,6 +398,51 @@ func TestRedisConfigValidateBoundaries(t *testing.T) {
 				Network: "unix",
 				Addr:    "/tmp/redis.sock",
 			},
+		},
+		{
+			name: "negative db",
+			config: RedisConfig{
+				Network: "tcp",
+				Addr:    "localhost:6379",
+				DB:      -1,
+			},
+			wantErr: ErrRedisInvalidDB,
+		},
+		{
+			name: "negative pool size",
+			config: RedisConfig{
+				Network:  "tcp",
+				Addr:     "localhost:6379",
+				PoolSize: -1,
+			},
+			wantErr: ErrRedisInvalidPoolSize,
+		},
+		{
+			name: "negative dial timeout",
+			config: RedisConfig{
+				Network:     "tcp",
+				Addr:        "localhost:6379",
+				DialTimeout: -time.Second,
+			},
+			wantErr: ErrRedisInvalidTimeout,
+		},
+		{
+			name: "negative read timeout",
+			config: RedisConfig{
+				Network:     "tcp",
+				Addr:        "localhost:6379",
+				ReadTimeout: -time.Second,
+			},
+			wantErr: ErrRedisInvalidTimeout,
+		},
+		{
+			name: "negative write timeout",
+			config: RedisConfig{
+				Network:      "tcp",
+				Addr:         "localhost:6379",
+				WriteTimeout: -time.Second,
+			},
+			wantErr: ErrRedisInvalidTimeout,
 		},
 	}
 
@@ -412,18 +512,17 @@ func TestRedisConfigOptionsAndAsynqConversion(t *testing.T) {
 	if diff := cmp.Diff(want, gotSnapshot); diff != "" {
 		t.Errorf("redis option mismatch (-want +got):\n%s", diff)
 	}
-	assert.Same(t, tlsConfig, got.TLSConfig)
+	require.NotNil(t, got.TLSConfig)
+	assert.NotSame(t, tlsConfig, got.TLSConfig)
+	assert.Equal(t, uint16(tls.VersionTLS12), got.TLSConfig.MinVersion)
 }
 
-func TestJobOptionsAndSetters(t *testing.T) {
+func TestJobOptions(t *testing.T) {
 	t.Parallel()
 
 	scheduleAt := time.Now().Add(time.Hour)
 	deadline := scheduleAt.Add(time.Hour)
-	job := NewJob("job:test", nil)
-
-	got := job.SetID("job-id").SetResultWriter(nil)
-	job.WithOptions(
+	job := mustNewJob(t, "job:test", nil,
 		WithDelay(time.Second),
 		WithMaxRetries(3),
 		WithQueue("critical"),
@@ -431,33 +530,36 @@ func TestJobOptionsAndSetters(t *testing.T) {
 		WithDeadline(&deadline),
 		WithRetention(time.Hour),
 	)
+	options := job.Options()
 
-	assert.Same(t, job, got)
-	assert.Equal(t, "job-id", job.ID)
-	assert.Equal(t, time.Second, job.Options.Delay)
-	assert.Equal(t, 3, job.Options.MaxRetries)
-	assert.Equal(t, "critical", job.Options.Queue)
-	assert.Same(t, &scheduleAt, job.Options.ScheduleAt)
-	assert.Same(t, &deadline, job.Options.Deadline)
-	assert.Equal(t, time.Hour, job.Options.Retention)
+	assert.Equal(t, time.Second, options.Delay)
+	assert.Equal(t, 3, options.MaxRetries)
+	assert.Equal(t, "critical", options.Queue)
+	assert.Equal(t, scheduleAt, *options.ScheduleAt)
+	assert.Equal(t, deadline, *options.Deadline)
+	assert.NotSame(t, &scheduleAt, options.ScheduleAt)
+	assert.NotSame(t, &deadline, options.Deadline)
+	assert.Equal(t, time.Hour, options.Retention)
 }
 
-func TestConvertToAsynqTask_ValidationErrors(t *testing.T) {
+func TestNewJob_ValidationErrors(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		job     *Job
+		jobType string
+		opts    []JobOption
 		wantErr error
 	}{
 		{
 			name:    "missing type",
-			job:     NewJob("", nil),
+			jobType: "",
 			wantErr: ErrNoJobTypeSpecified,
 		},
 		{
 			name:    "missing queue",
-			job:     NewJob("job:test", nil, WithQueue("")),
+			jobType: "job:test",
+			opts:    []JobOption{WithQueue("")},
 			wantErr: ErrNoJobQueueSpecified,
 		},
 	}
@@ -466,12 +568,21 @@ func TestConvertToAsynqTask_ValidationErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			task, opts, err := tt.job.ConvertToAsynqTask()
-			assert.Nil(t, task)
-			assert.Nil(t, opts)
+			job, err := NewJob(tt.jobType, nil, tt.opts...)
+			assert.Nil(t, job)
 			assert.ErrorIs(t, err, tt.wantErr)
 		})
 	}
+}
+
+func TestConvertToAsynqTask_NilJob(t *testing.T) {
+	t.Parallel()
+
+	var job *Job
+	task, opts, err := job.ConvertToAsynqTask()
+	assert.Nil(t, task)
+	assert.Nil(t, opts)
+	assert.ErrorIs(t, err, ErrInvalidJob)
 }
 
 func TestConvertToAsynqOptions_AllOptions(t *testing.T) {
@@ -479,7 +590,7 @@ func TestConvertToAsynqOptions_AllOptions(t *testing.T) {
 
 	scheduleAt := time.Now().Add(time.Hour)
 	deadline := scheduleAt.Add(time.Hour)
-	job := NewJob("job:test", nil,
+	job := mustNewJob(t, "job:test", nil,
 		WithQueue("critical"),
 		WithDelay(time.Second),
 		WithScheduleAt(&scheduleAt),
@@ -500,34 +611,34 @@ func TestHandlerOptionsAndMiddleware(t *testing.T) {
 	calls := make([]string, 0, 3)
 	middleware := func(name string) MiddlewareFunc {
 		return func(next HandlerFunc) HandlerFunc {
-			return func(ctx context.Context, job *Job) error {
+			return func(ctx context.Context, delivery *Delivery) error {
 				calls = append(calls, name)
-				return next(ctx, job)
+				return next(ctx, delivery)
 			}
 		}
 	}
 	retryDelay := func(count int, _ error) time.Duration {
 		return time.Duration(count) * time.Second
 	}
-	handler := NewHandler("job:test",
-		func(context.Context, *Job) error {
+	handler := mustNewHandler(t, "job:test",
+		func(context.Context, *Delivery) error {
 			calls = append(calls, "handler")
 			return nil
 		},
 		WithRateLimiter(limiter),
+		WithJobQueue("critical"),
+		WithJobTimeout(5*time.Second),
 		WithRetryDelayFunc(retryDelay),
-		WithMiddleware(middleware("first")),
+		WithMiddleware(middleware("first"), middleware("second")),
 	)
 
-	handler.WithOptions(WithJobQueue("critical"), WithJobTimeout(5*time.Second))
-	handler.Use(middleware("second"))
-	err := handler.Process(t.Context(), NewJob("job:test", nil))
+	err := handler.Process(t.Context(), &Delivery{jobType: "job:test"})
 
 	require.NoError(t, err)
-	assert.Equal(t, "critical", handler.JobQueue)
-	assert.Equal(t, 5*time.Second, handler.JobTimeout)
-	assert.Same(t, limiter, handler.Limiter)
-	assert.Equal(t, 2*time.Second, handler.RetryDelayFunc(2, assert.AnError))
+	assert.Equal(t, "critical", handler.Queue())
+	assert.Equal(t, 5*time.Second, handler.Timeout())
+	assert.Same(t, limiter, handler.limiter)
+	assert.Equal(t, 2*time.Second, handler.retryDelayFunc(2, assert.AnError))
 	want := []string{"first", "second", "handler"}
 	if diff := cmp.Diff(want, calls); diff != "" {
 		t.Errorf("middleware calls mismatch (-want +got):\n%s", diff)
@@ -538,26 +649,25 @@ func TestConvertToAsynqTask_SerializationError(t *testing.T) {
 	t.Parallel()
 
 	payload := make(chan int)
-	job := NewJob("test", payload)
-	_, _, err := job.ConvertToAsynqTask()
+	job, err := NewJob("test", payload)
+	assert.Nil(t, job)
 	assert.ErrorIs(t, err, ErrSerializationFailure)
 }
 
 func TestDecodePayload_SerializationError(t *testing.T) {
 	t.Parallel()
 
-	payload := make(chan int)
-	job := &Job{Type: "test", Payload: payload}
+	var job *Job
 	var out string
 	err := job.DecodePayload(&out)
-	assert.ErrorIs(t, err, ErrSerializationFailure)
+	assert.ErrorIs(t, err, ErrInvalidJob)
 }
 
 func TestProcessWithTimeout_ContextCanceled(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler("test", func(ctx context.Context,
-		_ *Job) error {
+	handler := mustNewHandler(t, "test", func(ctx context.Context,
+		_ *Delivery) error {
 		<-ctx.Done()
 		return ctx.Err()
 	}, WithJobTimeout(100*time.Millisecond))
@@ -565,8 +675,8 @@ func TestProcessWithTimeout_ContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 
-	job := &Job{Type: "test"}
-	err := handler.Process(ctx, job)
+	delivery := &Delivery{jobType: "test"}
+	err := handler.Process(ctx, delivery)
 	assert.Error(t, err)
 	assert.True(t, errors.Is(err, context.Canceled))
 }
@@ -574,22 +684,22 @@ func TestProcessWithTimeout_ContextCanceled(t *testing.T) {
 func TestProcessWithTimeout_Success(t *testing.T) {
 	t.Parallel()
 
-	handler := NewHandler("test", func(_ context.Context,
-		_ *Job) error {
+	handler := mustNewHandler(t, "test", func(_ context.Context,
+		_ *Delivery) error {
 		return nil
 	}, WithJobTimeout(5*time.Second))
 
-	job := &Job{Type: "test"}
-	err := handler.Process(t.Context(), job)
+	delivery := &Delivery{jobType: "test"}
+	err := handler.Process(t.Context(), delivery)
 	require.NoError(t, err)
 }
 
 func TestWriteResult_SerializationError(t *testing.T) {
 	t.Parallel()
 
-	job := NewJob("test", nil)
-	err := job.WriteResult("data")
-	assert.ErrorIs(t, err, ErrResultWriterNotSet)
+	delivery := &Delivery{resultWriter: &asynq.ResultWriter{}}
+	err := delivery.WriteResult(func() {})
+	assert.ErrorIs(t, err, ErrSerializationFailure)
 }
 
 func TestManagerListJobsByStateRejectsInvalidState(t *testing.T) {
@@ -665,7 +775,7 @@ func TestManagerDeleteJobsByStateEarlyErrors(t *testing.T) {
 	}{
 		{name: "invalid state", state: JobState("unknown"), wantErr: ErrInvalidJobState},
 		{name: "active not supported", state: StateActive, wantErr: ErrOperationNotSupported},
-		{name: "aggregating not supported", state: StateAggregating, wantErr: ErrOperationNotSupported},
+		{name: "aggregating requires group", state: StateAggregating, wantErr: ErrGroupRequiredForAggregation},
 	}
 
 	for _, tt := range tests {
@@ -682,8 +792,17 @@ func TestManagerDeleteJobsByStateEarlyErrors(t *testing.T) {
 func TestRedisInfo_UnsupportedClient(t *testing.T) {
 	t.Parallel()
 
-	m := &Manager{client: nil}
-	_, err := m.RedisInfo(t.Context())
+	client := redis.NewRing(&redis.RingOptions{
+		Addrs: map[string]string{"shard": "localhost:6379"},
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close())
+	})
+	inspector := asynq.NewInspector(DefaultRedisConfig().ToAsynqRedisOpt())
+	m, err := NewManager(client, inspector)
+	require.NoError(t, err)
+
+	_, err = m.RedisInfo(t.Context())
 	assert.ErrorIs(t, err, ErrRedisClientNotSupported)
 }
 
@@ -698,46 +817,68 @@ func TestRedisValidate_UnixNetwork(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestNewJobFromAsynqTask(t *testing.T) {
+func TestNewDeliveryFromTask(t *testing.T) {
 	t.Parallel()
 
 	payload := []byte(`{"key":"value"}`)
 	task := asynq.NewTask("test:type", payload)
-	job, err := NewJobFromAsynqTask(task)
+	delivery, err := newDeliveryFromTask(t.Context(), task, "critical")
 	require.NoError(t, err)
-	assert.Equal(t, "test:type", job.Type)
-	if diff := cmp.Diff(payload, job.Payload); diff != "" {
-		t.Errorf("job payload mismatch (-want +got):\n%s", diff)
+	assert.Equal(t, "test:type", delivery.Type())
+	assert.Equal(t, "critical", delivery.Queue())
+	assert.Equal(t, 1, delivery.Attempt())
+	assert.Zero(t, delivery.RetryCount())
+	assert.Zero(t, delivery.MaxRetry())
+	_, ok := delivery.Deadline()
+	assert.False(t, ok)
+	if diff := cmp.Diff(payload, delivery.rawPayload); diff != "" {
+		t.Errorf("delivery payload mismatch (-want +got):\n%s", diff)
 	}
 }
 
-func TestNewJobFromAsynqTask_AllowsDecodePayload(t *testing.T) {
+func TestNewDeliveryFromTask_UsesContextDeadline(t *testing.T) {
+	t.Parallel()
+
+	deadline := time.Now().Add(time.Minute).Round(0)
+	ctx, cancel := context.WithDeadline(t.Context(), deadline)
+	defer cancel()
+
+	task := asynq.NewTask("test:type", []byte(`{}`))
+	delivery, err := newDeliveryFromTask(ctx, task, "default")
+	require.NoError(t, err)
+
+	got, ok := delivery.Deadline()
+	require.True(t, ok)
+	assert.Equal(t, deadline, got)
+}
+
+func TestNewDeliveryFromTask_AllowsDecodePayload(t *testing.T) {
 	t.Parallel()
 
 	task := asynq.NewTask("test:type", []byte(`{"key":"value"}`))
-	job, err := NewJobFromAsynqTask(task)
+	delivery, err := newDeliveryFromTask(t.Context(), task, "default")
 	require.NoError(t, err)
 
 	var got struct {
 		Key string `json:"key"`
 	}
-	err = job.DecodePayload(&got)
+	err = delivery.DecodePayload(&got)
 	require.NoError(t, err)
 	assert.Equal(t, "value", got.Key)
 }
 
-func TestNewJobFromAsynqTask_NilTask(t *testing.T) {
+func TestNewDeliveryFromTask_NilTask(t *testing.T) {
 	t.Parallel()
 
-	job, err := NewJobFromAsynqTask(nil)
-	assert.Nil(t, job)
+	delivery, err := newDeliveryFromTask(t.Context(), nil, "default")
+	assert.Nil(t, delivery)
 	assert.ErrorIs(t, err, ErrInvalidAsynqTask)
 }
 
 func TestConvertToAsynqOptions_NoOptions(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{Options: JobOptions{}}
+	job := &Job{options: JobOptions{}}
 	opts := job.ConvertToAsynqOptions()
 	assert.Empty(t, opts)
 }
@@ -746,7 +887,7 @@ func TestConvertToAsynqOptions_ZeroScheduleAt(t *testing.T) {
 	t.Parallel()
 
 	zero := time.Time{}
-	job := &Job{Options: JobOptions{ScheduleAt: &zero}}
+	job := &Job{options: JobOptions{ScheduleAt: &zero}}
 	opts := job.ConvertToAsynqOptions()
 	assert.Empty(t, opts)
 }
@@ -755,7 +896,7 @@ func TestConvertToAsynqOptions_ZeroDeadline(t *testing.T) {
 	t.Parallel()
 
 	zero := time.Time{}
-	job := &Job{Options: JobOptions{Deadline: &zero}}
+	job := &Job{options: JobOptions{Deadline: &zero}}
 	opts := job.ConvertToAsynqOptions()
 	assert.Empty(t, opts)
 }
@@ -763,40 +904,54 @@ func TestConvertToAsynqOptions_ZeroDeadline(t *testing.T) {
 func TestEnqueueJob_WithJobRetention(t *testing.T) {
 	t.Parallel()
 
-	job := NewJob("test", map[string]string{"k": "v"},
+	job := mustNewJob(t, "test", map[string]string{"k": "v"},
 		WithRetention(2*time.Hour),
 	)
-	assert.Equal(t, 2*time.Hour, job.Options.Retention)
+	assert.Equal(t, 2*time.Hour, job.Options().Retention)
 }
 
 func TestRedisInfo_StandardClient(t *testing.T) {
 	t.Parallel()
 
-	m := &Manager{client: nil}
-	_, err := m.RedisInfo(t.Context())
-	assert.ErrorIs(t, err, ErrRedisClientNotSupported)
+	client := redis.NewClient(&redis.Options{
+		Addr:        "127.0.0.1:1",
+		DialTimeout: time.Millisecond,
+	})
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close())
+	})
+	inspector := asynq.NewInspector(DefaultRedisConfig().ToAsynqRedisOpt())
+	m, err := NewManager(client, inspector)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err = m.RedisInfo(ctx)
+	assert.ErrorIs(t, err, context.Canceled)
+	assert.NotErrorIs(t, err, ErrRedisClientNotSupported)
 }
 
 func TestMemoryConfigProvider_RegisterDuplicate(t *testing.T) {
 	t.Parallel()
 
 	p := NewMemoryConfigProvider()
-	job := NewJob("test", nil)
-	_, err := p.RegisterCronJob("* * * * *", job)
+	job := mustNewJob(t, "test", nil)
+	_, err := p.RegisterCronJob("test-schedule", "* * * * *", job)
 	require.NoError(t, err)
 
-	id, err := p.RegisterCronJob("* * * * *", job)
+	id, err := p.RegisterCronJob("test-schedule", "* * * * *", job)
 
 	assert.Empty(t, id)
-	assert.ErrorIs(t, err, ErrJobAlreadyExists)
+	assert.ErrorIs(t, err, ErrScheduleAlreadyExists)
 }
 
 func TestGetConfigs_WithEntries(t *testing.T) {
 	t.Parallel()
 
 	p := NewMemoryConfigProvider()
-	j := NewJob("test", nil)
-	_, err := p.RegisterCronJob("* * * * *", j)
+	j := mustNewJob(t, "test", nil)
+	_, err := p.RegisterCronJob("test-schedule", "* * * * *", j)
 	require.NoError(t, err)
 
 	configs, err := p.GetConfigs()
@@ -806,24 +961,10 @@ func TestGetConfigs_WithEntries(t *testing.T) {
 	assert.Equal(t, "test", configs[0].Task.Type())
 }
 
-func TestGetConfigs_ConversionError(t *testing.T) {
+func TestRegisterCronJob_NilJob(t *testing.T) {
 	t.Parallel()
 
 	p := NewMemoryConfigProvider()
-	_, err := p.RegisterCronJob("* * * * *", NewJob("", nil))
-	require.NoError(t, err)
-
-	_, err = p.GetConfigs()
-	assert.ErrorIs(t, err, ErrNoJobTypeSpecified)
-}
-
-func TestGetConfigs_SerializationError(t *testing.T) {
-	t.Parallel()
-
-	p := NewMemoryConfigProvider()
-	_, err := p.RegisterCronJob("* * * * *", NewJob("test", make(chan int)))
-	require.NoError(t, err)
-
-	_, err = p.GetConfigs()
-	assert.ErrorIs(t, err, ErrSerializationFailure)
+	_, err := p.RegisterCronJob("test-schedule", "* * * * *", nil)
+	assert.ErrorIs(t, err, ErrInvalidJob)
 }

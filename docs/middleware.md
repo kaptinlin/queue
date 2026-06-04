@@ -23,13 +23,13 @@ Below is an example of logging middleware:
 ```go
 func LoggingMiddleware(logger *log.Logger) MiddlewareFunc {
     return func(next HandlerFunc) HandlerFunc {
-        return func(ctx context.Context, job *Job) error {
-            logger.Printf("Starting job: %s", job.Type)
-            err := next(ctx, job)
+        return func(ctx context.Context, delivery *Delivery) error {
+            logger.Printf("Starting job: %s attempt=%d", delivery.Type(), delivery.Attempt())
+            err := next(ctx, delivery)
             if err != nil {
-                logger.Printf("Job %s failed: %v", job.Type, err)
+                logger.Printf("Job %s failed: %v", delivery.Type(), err)
             } else {
-                logger.Printf("Job %s completed successfully", job.Type)
+                logger.Printf("Job %s completed successfully", delivery.Type())
             }
             return err
         }

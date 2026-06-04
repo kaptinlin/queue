@@ -34,7 +34,6 @@ func (l *mockLogger) Debug(args ...any) { l.log("debug", args...) }
 func (l *mockLogger) Info(args ...any)  { l.log("info", args...) }
 func (l *mockLogger) Warn(args ...any)  { l.log("warn", args...) }
 func (l *mockLogger) Error(args ...any) { l.log("error", args...) }
-func (l *mockLogger) Fatal(args ...any) { l.log("fatal", args...) }
 
 func (l *mockLogger) hasLevel(level string) bool {
 	l.mu.Lock()
@@ -56,19 +55,26 @@ func TestSchedulerInitialization(t *testing.T) {
 	assert.NotNil(t, scheduler, "Expected a valid Scheduler instance")
 }
 
-func TestSchedulerStartAndStop(t *testing.T) {
+func TestSchedulerRunCanceledContext(t *testing.T) {
 	redisConfig := getRedisConfig()
 	scheduler, err := queue.NewScheduler(redisConfig)
 	require.NoError(t, err, "Failed to create scheduler")
 
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
 	go func() {
-		assert.NoError(t, scheduler.Start(), "Failed to start scheduler")
+		done <- scheduler.Run(ctx)
 	}()
 
 	time.Sleep(2 * time.Second)
+	cancel()
 
-	err = scheduler.Stop()
-	require.NoError(t, err, "Failed to stop scheduler")
+	select {
+	case err := <-done:
+		require.NoError(t, err, "Failed to stop scheduler")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for scheduler shutdown")
+	}
 }
 
 func TestSchedulerRegisterWithInvalidCronSpec(t *testing.T) {
@@ -79,70 +85,10 @@ func TestSchedulerRegisterWithInvalidCronSpec(t *testing.T) {
 	require.NoError(t, err, "Failed to create scheduler")
 
 	// Register a job with an invalid cron expression to trigger the error handler.
-	_, err = scheduler.RegisterCron("wrong cron", "error_job", nil)
+	_, err = scheduler.RegisterCron("error_job", "wrong cron", "error_job", nil)
 
 	// Verify the error was triggered.
-	assert.Error(t, err, "Expected an error when registering a job with an invalid cron expression")
-}
-
-func TestSchedulerPreEnqueueHook(t *testing.T) {
-	redisConfig := getRedisConfig()
-
-	var preEnqueueCalled atomic.Bool
-	preEnqueueHook := func(job *queue.Job) {
-		preEnqueueCalled.Store(true)
-		t.Log("PreEnqueueFunc called")
-	}
-
-	scheduler, err := queue.NewScheduler(redisConfig, queue.WithPreEnqueueFunc(preEnqueueHook))
-	require.NoError(t, err, "Failed to create scheduler with pre enqueue hook")
-
-	jobType := "pre_enqueue_test"
-	payload := map[string]any{"data": "pre"}
-
-	_, err = scheduler.RegisterCron("@every 1s", jobType, payload)
-	require.NoError(t, err, "Failed to register cron job")
-
-	go func() {
-		assert.NoError(t, scheduler.Start(), "Failed to start scheduler")
-	}()
-	defer func() {
-		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
-	}()
-
-	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
-
-	assert.True(t, preEnqueueCalled.Load(), "Expected PreEnqueueFunc to be called")
-}
-
-func TestSchedulerPostEnqueueHook(t *testing.T) {
-	redisConfig := getRedisConfig()
-
-	var postEnqueueCalled atomic.Bool
-	postEnqueueHook := func(job *queue.JobInfo, err error) {
-		postEnqueueCalled.Store(true)
-		t.Logf("PostEnqueueFunc called with job: %+v, error: %v", job, err)
-	}
-
-	scheduler, err := queue.NewScheduler(redisConfig, queue.WithPostEnqueueFunc(postEnqueueHook))
-	require.NoError(t, err, "Failed to create scheduler with post enqueue hook")
-
-	jobType := "post_enqueue_test"
-	payload := map[string]any{"data": "post"}
-
-	_, err = scheduler.RegisterCron("@every 1s", jobType, payload)
-	require.NoError(t, err, "Failed to register cron job")
-
-	go func() {
-		assert.NoError(t, scheduler.Start(), "Failed to start scheduler")
-	}()
-	defer func() {
-		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
-	}()
-
-	time.Sleep(5 * time.Second) // Wait for the scheduler to potentially enqueue jobs
-
-	assert.True(t, postEnqueueCalled.Load(), "Expected PostEnqueueFunc to be called")
+	assert.ErrorIs(t, err, queue.ErrInvalidCronSpec)
 }
 
 func TestSchedulerPostEnqueueUsesConfiguredLogger(t *testing.T) {
@@ -154,20 +100,14 @@ func TestSchedulerPostEnqueueUsesConfiguredLogger(t *testing.T) {
 	)
 	require.NoError(t, err, "Failed to create scheduler with custom logger")
 
-	_, err = scheduler.RegisterCron("@every 1s", "logger_test", map[string]any{"key": "value"})
+	_, err = scheduler.RegisterCron("logger_test", "@every 1s", "logger_test", map[string]any{"key": "value"})
 	require.NoError(t, err, "Failed to register cron job")
 
-	go func() {
-		assert.NoError(t, scheduler.Start(), "Failed to start scheduler")
-	}()
-	defer func() {
-		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
-	}()
+	runScheduler(t, scheduler)
 
 	time.Sleep(5 * time.Second) // Wait for the scheduler to enqueue jobs
 
-	// Verify the configured logger received info-level messages from PostEnqueueFunc
-	assert.True(t, logger.hasLevel("info"), "Expected configured logger to receive info log from PostEnqueueFunc")
+	assert.True(t, logger.hasLevel("info"), "Expected configured logger to receive scheduler enqueue log")
 }
 
 // TestSchedulerCronTriggerWithWorkerProcessing verifies the full lifecycle:
@@ -186,9 +126,9 @@ func TestSchedulerCronTriggerWithWorkerProcessing(t *testing.T) {
 	worker, err := queue.NewWorker(redisConfig)
 	require.NoError(t, err, "Failed to create worker")
 
-	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(_ context.Context, delivery *queue.Delivery) error {
 		var p map[string]string
-		if decErr := job.DecodePayload(&p); decErr != nil {
+		if decErr := delivery.DecodePayload(&p); decErr != nil {
 			return decErr
 		}
 		processedPayload.Store("action", p["action"])
@@ -197,12 +137,7 @@ func TestSchedulerCronTriggerWithWorkerProcessing(t *testing.T) {
 	})
 	require.NoError(t, err, "Failed to register handler")
 
-	go func() {
-		assert.NoError(t, worker.Start(), "Worker failed to start")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop(), "Failed to stop worker")
-	}()
+	runWorker(t, worker)
 
 	// Set up scheduler with a 1-second cron interval.
 	scheduler, err := queue.NewScheduler(redisConfig,
@@ -210,15 +145,10 @@ func TestSchedulerCronTriggerWithWorkerProcessing(t *testing.T) {
 	)
 	require.NoError(t, err, "Failed to create scheduler")
 
-	_, err = scheduler.RegisterCron("@every 1s", jobType, payload)
+	_, err = scheduler.RegisterCron(jobType, "@every 1s", jobType, payload)
 	require.NoError(t, err, "Failed to register cron job")
 
-	go func() {
-		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
-	}()
-	defer func() {
-		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
-	}()
+	runScheduler(t, scheduler)
 
 	// Wait for the job to be enqueued and processed.
 	require.Eventually(t, processed.Load, 10*time.Second, 200*time.Millisecond,
@@ -242,18 +172,13 @@ func TestSchedulerPeriodicMultipleExecutions(t *testing.T) {
 	worker, err := queue.NewWorker(redisConfig)
 	require.NoError(t, err, "Failed to create worker")
 
-	err = worker.Register(jobType, func(_ context.Context, _ *queue.Job) error {
+	err = worker.Register(jobType, func(_ context.Context, _ *queue.Delivery) error {
 		execCount.Add(1)
 		return nil
 	})
 	require.NoError(t, err, "Failed to register handler")
 
-	go func() {
-		assert.NoError(t, worker.Start(), "Worker failed to start")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop(), "Failed to stop worker")
-	}()
+	runWorker(t, worker)
 
 	// Set up scheduler with RegisterPeriodic.
 	scheduler, err := queue.NewScheduler(redisConfig,
@@ -262,234 +187,15 @@ func TestSchedulerPeriodicMultipleExecutions(t *testing.T) {
 	require.NoError(t, err, "Failed to create scheduler")
 
 	_, err = scheduler.RegisterPeriodic(
-		1*time.Second, jobType, map[string]string{"key": "periodic"},
+		jobType, 1*time.Second, jobType, map[string]string{"key": "periodic"},
 	)
 	require.NoError(t, err, "Failed to register periodic job")
 
-	go func() {
-		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
-	}()
-	defer func() {
-		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
-	}()
+	runScheduler(t, scheduler)
 
 	// Wait until the job has been processed at least 2 times.
 	require.Eventually(t, func() bool {
 		return execCount.Load() >= 2
 	}, 15*time.Second, 200*time.Millisecond,
 		"Expected periodic job to execute at least 2 times")
-}
-
-// TestSchedulerPreEnqueueFuncReceivesJobType verifies that the
-// PreEnqueueFunc callback receives a Job with the correct type.
-func TestSchedulerPreEnqueueFuncReceivesJobType(t *testing.T) {
-	redisConfig := getRedisConfig()
-
-	const jobType = "pre_enqueue_type_verify"
-
-	var mu sync.Mutex
-	var capturedTypes []string
-
-	scheduler, err := queue.NewScheduler(redisConfig,
-		queue.WithSyncInterval(1*time.Second),
-		queue.WithPreEnqueueFunc(func(job *queue.Job) {
-			mu.Lock()
-			defer mu.Unlock()
-			capturedTypes = append(capturedTypes, job.Type)
-		}),
-	)
-	require.NoError(t, err, "Failed to create scheduler")
-
-	_, err = scheduler.RegisterCron(
-		"@every 1s", jobType, map[string]string{"k": "v"},
-	)
-	require.NoError(t, err, "Failed to register cron job")
-
-	go func() {
-		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
-	}()
-
-	// Allow scheduler to fully initialize before deferred Stop.
-	time.Sleep(1 * time.Second)
-
-	defer func() {
-		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
-	}()
-
-	// Wait for at least one callback invocation.
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(capturedTypes) >= 1
-	}, 10*time.Second, 200*time.Millisecond,
-		"Expected PreEnqueueFunc to be called at least once")
-
-	mu.Lock()
-	defer mu.Unlock()
-	for _, ct := range capturedTypes {
-		assert.Equal(t, jobType, ct,
-			"PreEnqueueFunc received unexpected job type")
-	}
-}
-
-// TestSchedulerPostEnqueueFuncReceivesJobInfo verifies that the
-// PostEnqueueFunc callback receives a valid JobInfo with correct
-// type and no error on successful enqueue.
-func TestSchedulerPostEnqueueFuncReceivesJobInfo(t *testing.T) {
-	redisConfig := getRedisConfig()
-
-	const jobType = "post_enqueue_info_verify"
-
-	type postEnqueueRecord struct {
-		jobInfo *queue.JobInfo
-		err     error
-	}
-
-	var mu sync.Mutex
-	var records []postEnqueueRecord
-
-	scheduler, err := queue.NewScheduler(redisConfig,
-		queue.WithSyncInterval(1*time.Second),
-		queue.WithPostEnqueueFunc(func(info *queue.JobInfo, err error) {
-			mu.Lock()
-			defer mu.Unlock()
-			records = append(records, postEnqueueRecord{
-				jobInfo: info,
-				err:     err,
-			})
-		}),
-	)
-	require.NoError(t, err, "Failed to create scheduler")
-
-	_, err = scheduler.RegisterCron(
-		"@every 1s", jobType, map[string]string{"k": "v"},
-	)
-	require.NoError(t, err, "Failed to register cron job")
-
-	go func() {
-		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
-	}()
-	defer func() {
-		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
-	}()
-
-	// Wait for at least one callback invocation.
-	require.Eventually(t, func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return len(records) >= 1
-	}, 10*time.Second, 200*time.Millisecond,
-		"Expected PostEnqueueFunc to be called at least once")
-
-	mu.Lock()
-	defer mu.Unlock()
-	for i, rec := range records {
-		assert.NoError(t, rec.err,
-			"PostEnqueueFunc record %d should have no error", i)
-		require.NotNil(t, rec.jobInfo,
-			"PostEnqueueFunc record %d should have non-nil JobInfo", i)
-		assert.Equal(t, jobType, rec.jobInfo.Type,
-			"PostEnqueueFunc record %d has wrong job type", i)
-		assert.NotEmpty(t, rec.jobInfo.ID,
-			"PostEnqueueFunc record %d should have a job ID", i)
-		assert.NotEmpty(t, rec.jobInfo.Queue,
-			"PostEnqueueFunc record %d should have a queue name", i)
-	}
-}
-
-// TestSchedulerPreAndPostEnqueueFuncsBothFire verifies that when
-// both Pre and Post enqueue hooks are configured, both are invoked
-// for each scheduled job enqueue.
-func TestSchedulerPreAndPostEnqueueFuncsBothFire(t *testing.T) {
-	redisConfig := getRedisConfig()
-
-	const jobType = "pre_post_both_test"
-
-	var preCount atomic.Int64
-	var postCount atomic.Int64
-
-	scheduler, err := queue.NewScheduler(redisConfig,
-		queue.WithSyncInterval(1*time.Second),
-		queue.WithPreEnqueueFunc(func(_ *queue.Job) {
-			preCount.Add(1)
-		}),
-		queue.WithPostEnqueueFunc(func(_ *queue.JobInfo, _ error) {
-			postCount.Add(1)
-		}),
-	)
-	require.NoError(t, err, "Failed to create scheduler")
-
-	_, err = scheduler.RegisterCron(
-		"@every 1s", jobType, map[string]string{"k": "v"},
-	)
-	require.NoError(t, err, "Failed to register cron job")
-
-	go func() {
-		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
-	}()
-	defer func() {
-		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
-	}()
-
-	// Wait for at least one invocation of each hook.
-	require.Eventually(t, func() bool {
-		return preCount.Load() >= 1 && postCount.Load() >= 1
-	}, 10*time.Second, 200*time.Millisecond,
-		"Expected both PreEnqueueFunc and PostEnqueueFunc to fire")
-
-	// Both hooks should have been called the same number of times.
-	assert.Equal(t, preCount.Load(), postCount.Load(),
-		"Pre and Post enqueue call counts should match")
-}
-
-// TestSchedulerUnregisterCronJobStopsEnqueue verifies that after
-// unregistering a cron job, the scheduler stops enqueuing it.
-func TestSchedulerUnregisterCronJobStopsEnqueue(t *testing.T) {
-	redisConfig := getRedisConfig()
-
-	const jobType = "unregister_stop_test"
-	var enqueueCount atomic.Int64
-
-	scheduler, err := queue.NewScheduler(redisConfig,
-		queue.WithSyncInterval(1*time.Second),
-		queue.WithPostEnqueueFunc(func(_ *queue.JobInfo, _ error) {
-			enqueueCount.Add(1)
-		}),
-	)
-	require.NoError(t, err, "Failed to create scheduler")
-
-	id, err := scheduler.RegisterCron(
-		"@every 1s", jobType, map[string]string{"k": "v"},
-	)
-	require.NoError(t, err, "Failed to register cron job")
-
-	go func() {
-		assert.NoError(t, scheduler.Start(), "Scheduler failed to start")
-	}()
-	defer func() {
-		assert.NoError(t, scheduler.Stop(), "Failed to stop scheduler")
-	}()
-
-	// Wait for at least one enqueue.
-	require.Eventually(t, func() bool {
-		return enqueueCount.Load() >= 1
-	}, 10*time.Second, 200*time.Millisecond,
-		"Expected at least one enqueue before unregister")
-
-	// Unregister the job.
-	err = scheduler.UnregisterCronJob(id)
-	require.NoError(t, err, "Failed to unregister cron job")
-
-	// Wait for sync interval so the scheduler picks up the config change,
-	// plus buffer for any in-flight enqueue to complete.
-	time.Sleep(3 * time.Second)
-
-	// Record count after the scheduler has synced the unregistration.
-	countAfterSync := enqueueCount.Load()
-
-	// Wait another interval to confirm no more enqueues happen.
-	time.Sleep(3 * time.Second)
-
-	assert.Equal(t, countAfterSync, enqueueCount.Load(),
-		"No more enqueues should happen after unregistering the job")
 }

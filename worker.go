@@ -4,15 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/signal"
 	"runtime"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
-	"github.com/go-json-experiment/json"
 	"github.com/hibiken/asynq"
 	"golang.org/x/time/rate"
 )
@@ -28,31 +24,31 @@ const (
 	DefaultHandlerChannelBuffer = 1
 )
 
-// DefaultQueues defines default queue names and their priorities.
-var DefaultQueues = map[string]int{DefaultQueue: 1}
+func defaultQueues() map[string]int {
+	return map[string]int{DefaultQueue: 1}
+}
 
 // Worker processes tasks from queues.
 type Worker struct {
 	asynqServer  *asynq.Server
-	inspector    *asynq.Inspector
 	handlers     map[string]*Handler
 	groups       map[string]*Group
 	mu           sync.Mutex
 	started      atomic.Bool
+	stopped      atomic.Bool
 	errorHandler WorkerErrorHandler
 	limiter      *rate.Limiter
 	middlewares  []MiddlewareFunc
 	logger       Logger
-	stopCh       chan struct{}
 }
 
 // WorkerErrorHandler defines an interface for handling errors that occur during job processing.
 type WorkerErrorHandler interface {
-	HandleError(err error, job *Job)
+	HandleError(err error, delivery *Delivery)
 }
 
-// WorkerConfig holds configuration parameters for a worker, including concurrency, queue priorities, and error handling.
-type WorkerConfig struct {
+// workerConfig holds configuration parameters for a worker, including concurrency, queue priorities, and error handling.
+type workerConfig struct {
 	StopTimeout  time.Duration
 	Concurrency  int
 	Queues       map[string]int
@@ -61,8 +57,8 @@ type WorkerConfig struct {
 	Logger       Logger
 }
 
-// Validate checks if the WorkerConfig fields are correctly set.
-func (wc *WorkerConfig) Validate() error {
+// validate checks whether the worker configuration is usable.
+func (wc *workerConfig) validate() error {
 	if wc.Concurrency <= 0 {
 		return ErrInvalidWorkerConcurrency
 	}
@@ -70,11 +66,16 @@ func (wc *WorkerConfig) Validate() error {
 	if len(wc.Queues) == 0 {
 		return ErrInvalidWorkerQueues
 	}
+	for name, priority := range wc.Queues {
+		if name == "" || priority <= 0 {
+			return ErrInvalidWorkerQueues
+		}
+	}
 
 	return nil
 }
 
-// NewWorker creates and returns a new Worker based on the given Redis configuration and WorkerConfig options.
+// NewWorker creates and returns a new Worker based on the given Redis configuration and options.
 func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) {
 	if redisConfig == nil {
 		return nil, ErrInvalidRedisConfig
@@ -83,19 +84,22 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 		return nil, fmt.Errorf("invalid redis config: %w", err)
 	}
 
-	config := &WorkerConfig{
+	config := &workerConfig{
 		Concurrency: max(1, runtime.NumCPU()),
 		Logger:      NewDefaultLogger(),
 	}
 	for _, opt := range opts {
-		opt(config)
+		opt.applyWorkerOption(config)
+	}
+	if config.Logger == nil {
+		config.Logger = NewDefaultLogger()
 	}
 
 	if len(config.Queues) == 0 {
-		config.Queues = DefaultQueues
+		config.Queues = defaultQueues()
 	}
 
-	if err := config.Validate(); err != nil {
+	if err := config.validate(); err != nil {
 		return nil, fmt.Errorf("invalid worker config: %w", err)
 	}
 
@@ -105,7 +109,6 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 		errorHandler: config.ErrorHandler,
 		limiter:      config.Limiter,
 		logger:       config.Logger,
-		stopCh:       make(chan struct{}),
 	}
 	worker.setupAsynqServer(redisConfig, config)
 
@@ -134,12 +137,23 @@ func (w *Worker) Group(name string) *Group {
 	return group
 }
 
-// WorkerOption defines a function signature for configuring a Worker.
-type WorkerOption func(*WorkerConfig)
+// WorkerOption configures a Worker.
+type WorkerOption interface {
+	applyWorkerOption(*workerConfig)
+}
+
+type workerOption func(*workerConfig)
+
+func (f workerOption) applyWorkerOption(config *workerConfig) {
+	f(config)
+}
 
 // Register allows registering a handler function for a specific job type with additional options.
 func (w *Worker) Register(jobType string, handle HandlerFunc, opts ...HandlerOption) error {
-	handler := NewHandler(jobType, handle, opts...)
+	handler, err := NewHandler(jobType, handle, opts...)
+	if err != nil {
+		return err
+	}
 
 	return w.RegisterHandler(handler)
 }
@@ -149,22 +163,31 @@ func (w *Worker) RegisterHandler(handler *Handler) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	if handler.JobType == "" {
-		return ErrNoJobTypeSpecified
+	if handler == nil {
+		return ErrInvalidHandler
 	}
-	if handler.JobQueue == "" {
-		return ErrNoJobQueueSpecified
+	if err := handler.validate(); err != nil {
+		return err
 	}
-	if _, exists := w.handlers[handler.JobType]; exists {
-		return fmt.Errorf("%w: %s", ErrHandlerAlreadyRegistered, handler.JobType)
+	if _, exists := w.handlers[handler.jobType]; exists {
+		return fmt.Errorf("%w: %s", ErrHandlerAlreadyRegistered, handler.jobType)
 	}
 
-	w.handlers[handler.JobType] = handler
+	w.handlers[handler.jobType] = handler
 	return nil
 }
 
-// Start initiates the worker to process tasks, ensuring it has not already been started.
-func (w *Worker) Start() error {
+// Run starts the worker and blocks until ctx is canceled.
+func (w *Worker) Run(ctx context.Context) error {
+	if ctx == nil {
+		return ErrInvalidContext
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if w.stopped.Load() {
+		return ErrWorkerStopped
+	}
 	if !w.started.CompareAndSwap(false, true) {
 		return ErrWorkerAlreadyStarted
 	}
@@ -176,51 +199,31 @@ func (w *Worker) Start() error {
 		w.started.Store(false)
 		return err
 	}
-	w.logger.Info("Send signal TSTP to stop processing new tasks")
-	w.logger.Info("Send signal TERM or INT to terminate the process")
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM, syscall.SIGTSTP)
-	defer signal.Stop(sigCh)
-
-	for {
-		select {
-		case sig := <-sigCh:
-			if sig == syscall.SIGTSTP {
-				w.asynqServer.Stop()
-				continue
-			}
-			return w.Stop()
-		case <-w.stopCh:
-			return nil
-		}
+	<-ctx.Done()
+	if w.started.CompareAndSwap(true, false) {
+		w.shutdown()
 	}
-}
-
-// Stop gracefully shuts down the worker server, ensuring atomic update of the started status.
-func (w *Worker) Stop() error {
-	if !w.started.CompareAndSwap(true, false) {
-		return nil
-	}
-
-	w.asynqServer.Shutdown()
-	close(w.stopCh)
 
 	return nil
 }
 
-// setupAsynqServer initializes the asynq server and inspector.
-func (w *Worker) setupAsynqServer(redisConfig *RedisConfig, config *WorkerConfig) {
+func (w *Worker) shutdown() {
+	w.asynqServer.Shutdown()
+	w.stopped.Store(true)
+}
+
+// setupAsynqServer initializes the asynq server.
+func (w *Worker) setupAsynqServer(redisConfig *RedisConfig, config *workerConfig) {
 	asynqRedisOpt := redisConfig.ToAsynqRedisOpt()
 
-	w.inspector = asynq.NewInspector(asynqRedisOpt)
 	w.asynqServer = asynq.NewServer(asynqRedisOpt, asynq.Config{
 		ShutdownTimeout: config.StopTimeout,
 		Concurrency:     config.Concurrency,
 		Queues:          config.Queues,
 		RetryDelayFunc:  w.retryDelayFunc,
 		IsFailure:       w.isFailure,
-		Logger:          config.Logger,
+		Logger:          newAsynqLogger(config.Logger),
 	})
 }
 
@@ -246,40 +249,37 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 			return &ErrRateLimit{RetryAfter: DefaultRateLimitRetryAfter}
 		}
 
-		var payload any
-		if err := json.Unmarshal(task.Payload(), &payload); err != nil {
-			return err
-		}
-
-		taskID := task.ResultWriter().TaskID()
-
-		taskInfo, err := w.inspector.GetTaskInfo(handler.JobQueue, taskID)
+		delivery, err := newDeliveryFromTask(ctx, task, handler.jobQueue)
 		if err != nil {
 			return err
 		}
 
-		job := NewJob(task.Type(), payload,
-			WithDelay(time.Until(taskInfo.NextProcessAt)),
-			WithMaxRetries(taskInfo.MaxRetry),
-			WithQueue(taskInfo.Queue),
-			WithDeadline(&taskInfo.Deadline),
-			WithScheduleAt(&taskInfo.NextProcessAt),
-		)
-		job.SetID(taskID).SetResultWriter(task.ResultWriter())
-
-		if err := finalHandler(ctx, job); err != nil {
-			w.logger.Error(fmt.Sprintf("failed to process job: %v, job_id=%s, job_type=%s, queue=%s",
-				err, job.ID, job.Type, job.Options.Queue))
+		if err := finalHandler(ctx, delivery); err != nil {
+			w.logger.Error("failed to process job",
+				"error", err,
+				"job_id", delivery.ID(),
+				"job_type", delivery.Type(),
+				"queue", delivery.Queue(),
+				"attempt", delivery.Attempt(),
+				"retry_count", delivery.RetryCount(),
+			)
 
 			if w.errorHandler != nil {
-				w.errorHandler.HandleError(err, job)
+				w.errorHandler.HandleError(err, delivery)
 			}
 
-			return err
+			return asynqHandlerError(err)
 		}
 
 		return nil
 	}
+}
+
+func asynqHandlerError(err error) error {
+	if err == nil || errors.Is(err, asynq.SkipRetry) || !errors.Is(err, ErrSkipRetry) {
+		return err
+	}
+	return fmt.Errorf("%w: %w", err, asynq.SkipRetry)
 }
 
 // retryDelayFunc determines the delay before retrying a task after failure.
@@ -288,8 +288,8 @@ func (w *Worker) retryDelayFunc(count int, err error, task *asynq.Task) time.Dur
 		return rateLimitErr.RetryAfter
 	}
 
-	if handler, exists := w.handlers[task.Type()]; exists && handler.RetryDelayFunc != nil {
-		return handler.RetryDelayFunc(count, err)
+	if handler, exists := w.handlers[task.Type()]; exists && handler.retryDelayFunc != nil {
+		return handler.retryDelayFunc(count, err)
 	}
 
 	return asynq.DefaultRetryDelayFunc(count, err, task)
@@ -304,54 +304,57 @@ func (w *Worker) isFailure(err error) bool {
 
 // WithWorkerLogger sets a custom logger for the worker.
 func WithWorkerLogger(logger Logger) WorkerOption {
-	return func(c *WorkerConfig) {
+	return workerOption(func(c *workerConfig) {
 		c.Logger = logger
-	}
+	})
 }
 
 // WithWorkerStopTimeout configures the stop timeout for the worker.
 func WithWorkerStopTimeout(timeout time.Duration) WorkerOption {
-	return func(c *WorkerConfig) {
+	return workerOption(func(c *workerConfig) {
 		c.StopTimeout = timeout
-	}
+	})
 }
 
 // WithWorkerRateLimiter configures a global rate limiter for the worker.
 func WithWorkerRateLimiter(limiter *rate.Limiter) WorkerOption {
-	return func(c *WorkerConfig) {
+	return workerOption(func(c *workerConfig) {
 		c.Limiter = limiter
-	}
+	})
 }
 
 // WithWorkerConcurrency sets the number of concurrent workers.
 func WithWorkerConcurrency(concurrency int) WorkerOption {
-	return func(c *WorkerConfig) {
+	return workerOption(func(c *workerConfig) {
 		c.Concurrency = concurrency
-	}
+	})
 }
 
 // WithWorkerQueue adds a queue with the specified priority to the worker configuration.
 func WithWorkerQueue(name string, priority int) WorkerOption {
-	return func(c *WorkerConfig) {
+	return workerOption(func(c *workerConfig) {
 		if c.Queues == nil {
 			c.Queues = make(map[string]int)
 		}
 		c.Queues[name] = priority
-	}
+	})
 }
 
 // WithWorkerQueues sets the queue names and their priorities for the worker.
 func WithWorkerQueues(queues map[string]int) WorkerOption {
-	return func(c *WorkerConfig) {
+	return workerOption(func(c *workerConfig) {
 		if queues != nil {
-			c.Queues = queues
+			c.Queues = make(map[string]int, len(queues))
+			for name, priority := range queues {
+				c.Queues[name] = priority
+			}
 		}
-	}
+	})
 }
 
 // WithWorkerErrorHandler configures the error handler for the worker.
 func WithWorkerErrorHandler(handler WorkerErrorHandler) WorkerOption {
-	return func(c *WorkerConfig) {
+	return workerOption(func(c *workerConfig) {
 		c.ErrorHandler = handler
-	}
+	})
 }

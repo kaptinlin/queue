@@ -49,7 +49,8 @@ func TestToActiveJobInfo(t *testing.T) {
 	require.NotNil(t, a)
 	assert.Equal(t, "t1", a.JobID)
 	assert.Equal(t, "email", a.JobType)
-	assert.Equal(t, `{"k":"v"}`, a.JobPayload)
+	assert.True(t, a.HasPayload)
+	assert.Equal(t, len(`{"k":"v"}`), a.PayloadSize)
 	assert.Equal(t, "critical", a.Queue)
 }
 
@@ -132,7 +133,10 @@ func TestToJobInfo_Basic(t *testing.T) {
 	assert.Nil(t, info.StartedAt)
 	assert.Nil(t, info.DeadlineAt)
 	assert.Nil(t, info.Group)
-	assert.Nil(t, info.Result)
+	assert.True(t, info.HasPayload)
+	assert.Equal(t, len(`{"k":"v"}`), info.PayloadSize)
+	assert.False(t, info.HasResult)
+	assert.Zero(t, info.ResultSize)
 }
 
 func TestToJobInfo_WithTimestamps(t *testing.T) {
@@ -187,6 +191,6 @@ func TestToJobInfo_WithResult(t *testing.T) {
 		Result: []byte(`{"status":"ok"}`),
 	}
 	info := toJobInfo(ti, nil)
-	require.NotNil(t, info.Result)
-	assert.Equal(t, `{"status":"ok"}`, *info.Result)
+	assert.True(t, info.HasResult)
+	assert.Equal(t, len(`{"status":"ok"}`), info.ResultSize)
 }

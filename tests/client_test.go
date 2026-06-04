@@ -17,7 +17,7 @@ func TestClientEnqueue(t *testing.T) {
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err, "Failed to create client")
 	defer func() {
-		assert.NoError(t, client.Stop(), "Failed to stop client")
+		assert.NoError(t, client.Close(), "Failed to close client")
 	}()
 
 	jobType := "testEnqueueJob"
@@ -33,12 +33,12 @@ func TestClientEnqueueJob(t *testing.T) {
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err, "Failed to create client")
 	defer func() {
-		assert.NoError(t, client.Stop(), "Failed to stop client")
+		assert.NoError(t, client.Close(), "Failed to close client")
 	}()
 
 	jobType := "testEnqueueJobJob"
 	payload := map[string]any{"key": "value"}
-	job := queue.NewJob(jobType, payload)
+	job := newJob(t, jobType, payload)
 
 	_, err = client.EnqueueJob(job)
 	require.NoError(t, err, "EnqueueJob failed")
@@ -52,7 +52,7 @@ func TestClientWithClientRetention(t *testing.T) {
 		queue.WithClientRetention(retentionPeriod),
 	)
 	require.NoError(t, err, "Failed to create client with retention")
-	assert.NoError(t, client.Stop(), "Failed to stop client")
+	assert.NoError(t, client.Close(), "Failed to close client")
 }
 
 func TestClientWithClientErrorHandler(t *testing.T) {
@@ -76,7 +76,7 @@ func TestClientWithClientErrorHandler(t *testing.T) {
 	assert.NotEmpty(t, handler.errors, "Expected the custom error handler to be invoked with a conversion error")
 
 	// Clean up resources
-	assert.NoError(t, client.Stop(), "Failed to stop client")
+	assert.NoError(t, client.Close(), "Failed to close client")
 }
 
 // CustomClientErrorHandler implements the queue.ClientErrorHandler interface.

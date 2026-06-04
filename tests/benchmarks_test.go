@@ -11,7 +11,7 @@ func BenchmarkJobCreation(b *testing.B) {
 	payload := map[string]any{"key": "value", "count": 123}
 
 	for b.Loop() {
-		_ = queue.NewJob("test_job", payload)
+		_ = newJob(b, "test_job", payload)
 	}
 }
 
@@ -19,7 +19,7 @@ func BenchmarkJobCreationWithOptions(b *testing.B) {
 	payload := map[string]any{"key": "value", "count": 123}
 
 	for b.Loop() {
-		_ = queue.NewJob("test_job", payload,
+		_ = newJob(b, "test_job", payload,
 			queue.WithQueue("critical"),
 			queue.WithMaxRetries(3),
 		)
@@ -28,7 +28,7 @@ func BenchmarkJobCreationWithOptions(b *testing.B) {
 
 func BenchmarkJobConvertToAsynqTask(b *testing.B) {
 	payload := map[string]any{"key": "value", "count": 123}
-	job := queue.NewJob("test_job", payload, queue.WithQueue("default"))
+	job := newJob(b, "test_job", payload, queue.WithQueue("default"))
 
 	for b.Loop() {
 		_, _, err := job.ConvertToAsynqTask()
@@ -39,25 +39,24 @@ func BenchmarkJobConvertToAsynqTask(b *testing.B) {
 }
 
 func BenchmarkHandlerCreation(b *testing.B) {
-	handlerFunc := func(_ context.Context, _ *queue.Job) error {
+	handlerFunc := func(_ context.Context, _ *queue.Delivery) error {
 		return nil
 	}
 
 	for b.Loop() {
-		_ = queue.NewHandler("test_job", handlerFunc)
+		_ = newHandler(b, "test_job", handlerFunc)
 	}
 }
 
 func BenchmarkHandlerProcess(b *testing.B) {
-	handler := queue.NewHandler("test_job", func(_ context.Context, _ *queue.Job) error {
+	handler := newHandler(b, "test_job", func(_ context.Context, _ *queue.Delivery) error {
 		return nil
 	})
 
-	job := queue.NewJob("test_job", map[string]any{"key": "value"})
 	ctx := context.Background()
 
 	for b.Loop() {
-		err := handler.Process(ctx, job)
+		err := handler.Process(ctx, nil)
 		if err != nil {
 			b.Fatal(err)
 		}
@@ -71,7 +70,7 @@ func BenchmarkJobDecodePayload(b *testing.B) {
 	}
 
 	payload := map[string]any{"key": "value", "count": 123}
-	job := queue.NewJob("test_job", payload)
+	job := newJob(b, "test_job", payload)
 
 	for b.Loop() {
 		var decoded TestPayload
@@ -88,7 +87,7 @@ func BenchmarkClientEnqueue(b *testing.B) {
 	if err != nil {
 		b.Skipf("Redis not available: %v", err)
 	}
-	defer func() { _ = client.Stop() }()
+	defer func() { _ = client.Close() }()
 
 	payload := map[string]any{"key": "value"}
 
@@ -106,10 +105,10 @@ func BenchmarkClientEnqueueJob(b *testing.B) {
 	if err != nil {
 		b.Skipf("Redis not available: %v", err)
 	}
-	defer func() { _ = client.Stop() }()
+	defer func() { _ = client.Close() }()
 
 	for b.Loop() {
-		job := queue.NewJob("benchmark_job", map[string]any{"key": "value"})
+		job := newJob(b, "benchmark_job", map[string]any{"key": "value"})
 		_, err := client.EnqueueJob(job)
 		if err != nil {
 			b.Fatal(err)

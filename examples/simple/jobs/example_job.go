@@ -14,9 +14,9 @@ type ExampleJobPayload struct {
 }
 
 // HandleExampleJob processes the simple example job.
-func HandleExampleJob(ctx context.Context, job *queue.Job) error {
+func HandleExampleJob(ctx context.Context, delivery *queue.Delivery) error {
 	var payload ExampleJobPayload
-	if err := job.DecodePayload(&payload); err != nil {
+	if err := delivery.DecodePayload(&payload); err != nil {
 		return err
 	}
 

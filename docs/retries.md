@@ -20,11 +20,14 @@ func ExponentialBackoffDelay(attempts int, _ error) time.Duration {
 ### Applying to a Job Handler
 
 ```go
-handler := queue.NewHandler(
+handler, err := queue.NewHandler(
     "process_job",
     ProcessJobHandler,
     queue.WithRetryDelayFunc(ExponentialBackoffDelay), // Implement custom retry delay
 )
+if err != nil {
+    return err
+}
 ```
 
 This setup applies escalating delay times for retries, efficiently spacing out retry attempts.
@@ -38,7 +41,7 @@ Identifying the nature of failures allows for more intelligent retry decisions, 
 Temporary issues should trigger retries without impacting the retry count, aiding in self-recovery of transient problems.
 
 ```go
-func ProcessJobHandler(ctx context.Context, job *queue.Job) error {
+func ProcessJobHandler(ctx context.Context, delivery *queue.Delivery) error {
     if temporaryIssue() {
         return queue.ErrTransientIssue // Signals a retry without penalty
     }
@@ -50,9 +53,10 @@ func ProcessJobHandler(ctx context.Context, job *queue.Job) error {
 ### Addressing Permanent Failures
 
 For errors unlikely to be resolved with retries, prevent further attempts to save resources.
+Return queue's skip-retry error; the worker translates it to the underlying engine at the package boundary.
 
 ```go
-func ProcessJobHandler(ctx context.Context, job *queue.Job) error {
+func ProcessJobHandler(ctx context.Context, delivery *queue.Delivery) error {
     if irreversibleError() {
         return queue.NewSkipRetryError("Unrecoverable error identified") // Cease retries
     }

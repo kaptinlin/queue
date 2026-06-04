@@ -11,7 +11,14 @@ To leverage priority queues, configure your workers to recognize multiple queues
 Here’s how to configure your worker to recognize queues with different priorities:
 
 ```go
-import "github.com/kaptinlin/queue"
+import (
+    "context"
+    "os"
+    "os/signal"
+    "syscall"
+
+    "github.com/kaptinlin/queue"
+)
 
 func main() {
     redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
@@ -25,8 +32,10 @@ func main() {
         panic(err)
     }
 
-    defer worker.Stop()
-    if err := worker.Start(); err != nil {
+    ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+    defer stop()
+
+    if err := worker.Run(ctx); err != nil {
         panic(err)
     }
 }
@@ -56,7 +65,10 @@ if err != nil {
 }
 
 jobPayload := map[string]interface{}{"to": "user@example.com"}
-job := queue.NewJob("email:send", jobPayload, queue.WithQueue("critical"))
+job, err := queue.NewJob("email:send", jobPayload, queue.WithQueue("critical"))
+if err != nil {
+    panic(err)
+}
 
 _, err = client.EnqueueJob(job)
 if err != nil {

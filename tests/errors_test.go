@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -16,6 +17,7 @@ func TestNewSkipRetryError(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, queue.ErrSkipRetry)
+	assert.NotErrorIs(t, err, asynq.SkipRetry)
 }
 
 func TestErrRateLimitError(t *testing.T) {

@@ -49,7 +49,7 @@ func TestSchedulerRegisterCron_AcceptsStandardSpec(t *testing.T) {
 	scheduler, err := queue.NewScheduler(getRedisConfig())
 	require.NoError(t, err)
 
-	id, err := scheduler.RegisterCron("*/5 * * * *", "cron_standard_spec_test", nil)
+	id, err := scheduler.RegisterCron("cron_standard_spec_test", "*/5 * * * *", "cron_standard_spec_test", nil)
 	require.NoError(t, err)
 	assert.NotEmpty(t, id)
 }
@@ -60,12 +60,20 @@ func TestSchedulerRegisterPeriodicJob(t *testing.T) {
 	scheduler, err := queue.NewScheduler(getRedisConfig())
 	require.NoError(t, err)
 
-	job := queue.NewJob("periodic_test", nil)
+	job := newJob(t, "periodic_test", nil)
 	id, err := scheduler.RegisterPeriodicJob(
-		2*time.Second, job,
+		"periodic_test", 2*time.Second, job,
 	)
 	require.NoError(t, err)
 	assert.NotEmpty(t, id)
+}
+
+func TestSchedulerRegisterPeriodicJob_InvalidInterval(t *testing.T) {
+	scheduler, err := queue.NewScheduler(getRedisConfig())
+	require.NoError(t, err)
+
+	_, err = scheduler.RegisterPeriodicJob("periodic_test", 0, newJob(t, "periodic_test", nil))
+	assert.ErrorIs(t, err, queue.ErrInvalidPeriodicInterval)
 }
 
 // --- UnregisterCronJob not found ---
@@ -75,5 +83,5 @@ func TestSchedulerUnregisterCronJob_NotFound(t *testing.T) {
 	require.NoError(t, err)
 
 	err = scheduler.UnregisterCronJob("nonexistent")
-	assert.ErrorIs(t, err, queue.ErrConfigJobNotFound)
+	assert.ErrorIs(t, err, queue.ErrScheduleNotFound)
 }

@@ -18,28 +18,27 @@ func TestGroupRegisterHandler(t *testing.T) {
 
 	mwCalled := false
 	mw := func(next queue.HandlerFunc) queue.HandlerFunc {
-		return func(ctx context.Context, job *queue.Job) error {
+		return func(ctx context.Context, delivery *queue.Delivery) error {
 			mwCalled = true
-			return next(ctx, job)
+			return next(ctx, delivery)
 		}
 	}
 
 	group := worker.Group("email")
 	group.Use(mw)
 
-	handler := queue.NewHandler("email:send",
-		func(_ context.Context, _ *queue.Job) error {
+	handler := newHandler(t, "email:send",
+		func(_ context.Context, _ *queue.Delivery) error {
 			return nil
 		},
 	)
 	err = group.RegisterHandler(handler)
 	require.NoError(t, err)
 
-	// Verify middleware was applied by processing.
-	job := &queue.Job{Type: "email:send", Payload: "data"}
-	err = handler.Process(context.Background(), job)
+	// Group.RegisterHandler registers a clone, leaving the original handler untouched.
+	err = handler.Process(context.Background(), nil)
 	require.NoError(t, err)
-	assert.True(t, mwCalled)
+	assert.False(t, mwCalled)
 }
 
 func TestGroupRegisterHandler_NoMiddleware(t *testing.T) {
@@ -48,8 +47,8 @@ func TestGroupRegisterHandler_NoMiddleware(t *testing.T) {
 
 	group := worker.Group("plain")
 
-	handler := queue.NewHandler("plain:job",
-		func(_ context.Context, _ *queue.Job) error {
+	handler := newHandler(t, "plain:job",
+		func(_ context.Context, _ *queue.Delivery) error {
 			return nil
 		},
 	)

@@ -45,15 +45,20 @@ type MetricsErrorHandler struct {
 }
 
 func (h *MetricsErrorHandler) HandleError(err error, job *queue.Job) {
+    jobType := "unknown"
+    if job != nil {
+        jobType = job.Type()
+    }
+
     // Record metrics
-    h.metrics.WithLabelValues(job.Type, "failed").Inc()
+    h.metrics.WithLabelValues(jobType, "failed").Inc()
 
     // Send to error tracking service
     sentry.CaptureError(err)
 
-    // Trigger alerts for critical errors
-    if errors.Is(err, queue.ErrRedisConnection) {
-        alerts.Send("Redis connection failed!")
+    // Trigger alerts for failed enqueue operations
+    if errors.Is(err, queue.ErrEnqueueJob) {
+        alerts.Send("Job enqueue failed!")
     }
 }
 
@@ -73,21 +78,24 @@ type MonitoringErrorHandler struct {
     metrics *prometheus.Registry
 }
 
-func (h *MonitoringErrorHandler) HandleError(err error, job *queue.Job) {
+func (h *MonitoringErrorHandler) HandleError(err error, delivery *queue.Delivery) {
     // Record processing errors
-    h.metrics.WithLabelValues(job.Type, job.Options.Queue, "failed").Inc()
+    h.metrics.WithLabelValues(delivery.Type(), delivery.Queue(), "failed").Inc()
 
     // Send to error tracking
     sentry.CaptureException(err, &sentry.EventHint{
         Context: map[string]interface{}{
-            "job_id":   job.ID,
-            "job_type": job.Type,
-            "queue":    job.Options.Queue,
+            "job_id":      delivery.ID(),
+            "job_type":    delivery.Type(),
+            "queue":       delivery.Queue(),
+            "attempt":     delivery.Attempt(),
+            "retry_count": delivery.RetryCount(),
+            "max_retry":   delivery.MaxRetry(),
         },
     })
 
     // Trigger alerts for critical job types
-    if job.Type == "payment:process" {
+    if delivery.Type() == "payment:process" {
         alerts.Critical("Payment processing failed!", err)
     }
 }

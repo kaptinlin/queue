@@ -37,7 +37,7 @@ func TestManagerWithActiveWorker(t *testing.T) {
 	require.NoError(t, err)
 
 	err = worker.Register("active_test_job",
-		func(ctx context.Context, _ *queue.Job) error {
+		func(ctx context.Context, _ *queue.Delivery) error {
 			jobStarted.Done()
 			// Block until context is canceled or timeout.
 			<-ctx.Done()
@@ -47,8 +47,7 @@ func TestManagerWithActiveWorker(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	go func() { _ = worker.Start() }()
-	defer func() { _ = worker.Stop() }()
+	runWorker(t, worker)
 
 	// Allow worker to start.
 	time.Sleep(1 * time.Second)
@@ -56,7 +55,7 @@ func TestManagerWithActiveWorker(t *testing.T) {
 	// Enqueue a job.
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err)
-	defer func() { _ = client.Stop() }()
+	defer func() { _ = client.Close() }()
 
 	_, err = client.Enqueue("active_test_job",
 		map[string]string{"k": "v"},
@@ -79,8 +78,7 @@ func TestManagerListWorkersWithRunningWorker(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	go func() { _ = worker.Start() }()
-	defer func() { _ = worker.Stop() }()
+	runWorker(t, worker)
 
 	time.Sleep(1 * time.Second)
 

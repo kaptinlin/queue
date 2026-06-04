@@ -42,7 +42,7 @@ import (
     "time"
 )
 
-func ProcessEmailJob(ctx context.Context, job *queue.Job) error {
+func ProcessEmailJob(ctx context.Context, delivery *queue.Delivery) error {
     // Implement task logic here.
 }
 
@@ -50,15 +50,20 @@ func ProcessEmailJob(ctx context.Context, job *queue.Job) error {
 limiter := rate.NewLimiter(rate.Every(1*time.Minute), 5)
 
 // Apply the rate limiter to the handler for targeted execution control.
-handler := queue.NewHandler("send_email", ProcessEmailJob, queue.WithRateLimiter(limiter))
+handler, err := queue.NewHandler("send_email", ProcessEmailJob, queue.WithRateLimiter(limiter))
+if err != nil {
+    log.Fatalf("Handler creation failed: %v", err)
+}
 
 // Incorporate the handler into the worker configuration.
 if err := worker.RegisterHandler(handler); err != nil {
     log.Fatalf("Handler registration failed: %v", err)
 }
 
-// Initiate job processing with the defined rate limits.
-worker.Start()
+// Initiate job processing with the host-controlled context.
+if err := worker.Run(ctx); err != nil {
+    log.Fatalf("Worker stopped with error: %v", err)
+}
 ```
 
 These configurations allow you to effectively manage the execution rate of tasks, ensuring your application operates efficiently without overwhelming external services or system resources. This approach helps maintain application responsiveness and reliability.

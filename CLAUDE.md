@@ -1,303 +1,157 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+AI development guide for `github.com/kaptinlin/queue`.
 
-## Project Overview
-
-**Distributed job queue processing library** built on [Asynq](https://github.com/hibiken/asynq) and Redis. Provides automatic error logging, custom error handling, retries, priority queues, rate limiting, job retention, and distributed worker architecture for Go applications.
-
-**Module:** `github.com/kaptinlin/queue`
-**Go Version:** 1.26.2
-**Key Dependencies:** asynq, go-redis/v9, go-json-experiment/json, netresearch/go-cron, golang.org/x/time
+`queue` is a Redis-backed distributed job queue library built on Asynq. The package exposes small public concepts: immutable enqueue `Job`, runtime `Delivery`, `Client`, `Worker`, `Manager`, and `Scheduler`. Asynq and Redis stay behind the library boundary except at explicit adapter points.
 
 ## Commands
 
 ```bash
-# Testing (recommended workflow)
-task test-with-redis    # Start Redis, run tests, cleanup automatically
-task redis              # Start Redis via docker-compose
-task test               # Run tests (requires Redis running)
-task redis-stop         # Stop Redis service
-
-# Code quality
-task lint               # Run golangci-lint + go mod tidy verification
-task default            # Run lint + test-with-redis
-
-# Development
-task clean              # Remove bin/ artifacts
-go get -u all && go mod tidy  # Update dependencies
+task test-with-redis    # Start Redis, run integration tests, cleanup
+task test               # Run integration tests; requires Redis on localhost:6379
+task lint               # golangci-lint + go mod tidy diff check
+task vet                # Static analysis
+task default            # lint + test-with-redis
+task redis              # Start Redis through Docker Compose
+task redis-stop         # Stop Redis
+go test                 # Fast root package tests
+go test ./... -run '^$'   # Compile all packages without Redis-heavy test execution
+go build ./...          # Build all packages
 ```
+
+`task test-with-redis` depends on Docker Compose. If Docker Compose is unavailable, run the non-Redis checks and report the integration gap clearly.
 
 ## Architecture
 
-### Component Separation
-
-```
-Client (enqueue) → Redis Queue → Worker (process) → Result/Error
-                                      ↓
-                                  Manager (inspect/manage)
-                                  Scheduler (cron jobs)
+```text
+Client -> Redis queue -> Worker -> Delivery handler -> result/error
+                     \-> Manager inspection and operations
+                     \-> Scheduler periodic enqueue
 ```
 
-**Client:** Enqueues jobs to Redis. Runs anywhere (API servers, CLIs).
-**Worker:** Processes jobs from Redis. Distributed across machines.
-**Manager:** Inspection and management APIs for web UIs and monitoring.
-**Scheduler:** Cron-based periodic job scheduling with dynamic configuration.
+| Area | Files | Responsibility |
+|------|-------|----------------|
+| Enqueue | `client.go`, `job.go` | Validate immutable jobs, encode payloads, enqueue Asynq tasks |
+| Runtime | `worker.go`, `delivery.go`, `handler.go`, `middleware.go`, `group.go` | Process deliveries, compose middleware, enforce rate limits and timeouts |
+| Operations | `manager.go`, `info.go`, `state.go` | Inspect queues/jobs and perform state operations |
+| Scheduling | `scheduler.go`, `configs.go` | Register explicit schedule IDs and enqueue jobs on cron/periodic cadence |
+| Infrastructure | `redis.go`, `logger.go`, `default_logger.go`, `errors.go` | Redis config, logging adapters, stable error sentinels |
 
-### Core Design Patterns
+## Documentation Map
 
-#### 1. Functional Options Pattern
-All components use functional options:
+No `SPECS/` directory exists in the current tree. Treat source, tests, and feature docs as the current contract.
 
-```go
-client, _ := queue.NewClient(redisConfig,
-    queue.WithClientLogger(logger),
-    queue.WithClientErrorHandler(handler))
+| Document | Purpose |
+|----------|---------|
+| [README.md](README.md) | User-facing installation and usage guide |
+| [docs/priorities.md](docs/priorities.md) | Priority queue usage |
+| [docs/rate_limiting.md](docs/rate_limiting.md) | Worker and handler rate limiting |
+| [docs/retention_results.md](docs/retention_results.md) | Retention and delivery result writing |
+| [docs/retries.md](docs/retries.md) | Retry policy and skip-retry behavior |
+| [docs/timeouts_deadlines.md](docs/timeouts_deadlines.md) | Job deadlines and handler timeouts |
+| [docs/scheduler.md](docs/scheduler.md) | Scheduler registration and hooks |
+| [docs/config_provider.md](docs/config_provider.md) | Custom scheduler config providers |
+| [docs/middleware.md](docs/middleware.md) | Middleware composition |
+| [docs/error_handling.md](docs/error_handling.md) | Client and worker error handlers |
+| [docs/manager.md](docs/manager.md) | Manager APIs for operational UIs |
 
-worker, _ := queue.NewWorker(redisConfig,
-    queue.WithWorkerConcurrency(10),
-    queue.WithWorkerQueue("critical", 10))
+## Agent Operating Rules
 
-handler := queue.NewHandler("email:send", handleFunc,
-    queue.WithJobTimeout(30*time.Second),
-    queue.WithRateLimiter(limiter))
-```
+- Read the relevant source, tests, and docs before editing.
+- Keep changes surgical and aligned with the package boundary.
+- Prefer the simplest API that preserves a single clear concept.
+- Verify the exact behavior you changed; do not treat compilation as full proof.
+- Preserve user changes in dirty files and work with them.
+- Fail loud on missing Redis, Docker Compose, dependency bugs, or unclear contracts.
+- Do not add policy-only gate scripts that restate docs.
+- Do not add spec mirror tests that prove prose instead of behavior.
 
-#### 2. Dual Error Handling System
-- **Automatic logging:** Always logs errors via `Logger` interface (defaults to slog)
-- **Optional custom handlers:** Implement `ClientErrorHandler` or `WorkerErrorHandler` for metrics/alerts
-- Both happen independently—logging is guaranteed, custom handlers are optional
+## Design Philosophy
 
-```go
-if err != nil {
-    logger.Error(...)           // Always happens
-    if handler != nil {
-        handler.HandleError(...)  // Optional metrics/alerts
-    }
-}
-```
+- **KISS** — Each public concept has one job: `Job` is enqueue intent, `Delivery` is runtime fact, `JobInfo` is inspection state.
+- **DRY** — Queue state/action rules and error translations should live once and be reused by single and batch paths.
+- **SRP** — Client, Worker, Manager, Scheduler, and ConfigProvider have separate responsibilities; do not leak one component's runtime facts into another.
+- **ISP** — Avoid fat exported interfaces. Let consumers define the small interfaces their tests or services need.
+- **Precision over cleverness** — Names must carry lifecycle meaning: schedule ID, content digest, runtime ID, delivery, snapshot.
+- **Never:** workflow engine gravity, hidden process ownership, broad compatibility shims, abstraction theater.
 
-#### 3. Middleware Composition
-Three levels of middleware:
-- **Worker-level:** `worker.Use(middleware)` applies to all handlers
-- **Group-level:** `group.Use(middleware)` applies to grouped handlers
-- **Handler-level:** `handler.Use(middleware)` applies to specific handler
+## API Design Principles
 
-Middleware signature: `func(HandlerFunc) HandlerFunc`
-
-#### 4. Job Fingerprinting
-Every job gets a unique MD5 hash based on type, payload, and options. Used for deduplication detection, debugging, tracing, and job identification in logs.
-
-#### 5. Asynq Integration Layer
-Core types wrap Asynq primitives:
-- `Job` ↔ `asynq.Task` via `ConvertToAsynqTask()`
-- `HandlerFunc` wraps `asynq.TaskHandler`
-- `Worker` manages `asynq.Server` and `asynq.ServeMux`
-- `Manager` uses `asynq.Inspector` for introspection
-
-### Job State Flow
-
-```
-pending → scheduled → active → [retry] → completed/archived
-                           ↓
-                      aggregating (grouped jobs)
-```
-
-States defined in `state.go`:
-- `StatePending`: Queued and ready
-- `StateScheduled`: Scheduled for future
-- `StateActive`: Currently processing
-- `StateRetry`: Failed, awaiting retry
-- `StateCompleted`: Successfully finished
-- `StateArchived`: Failed permanently
-- `StateAggregating`: Grouped jobs awaiting aggregation
-
-### Handler Processing Flow
-
-```
-Worker.makeHandlerFunc() wraps:
-  1. Global rate limiting check (Worker.limiter)
-  2. Task → Job reconstruction (using Inspector.GetTaskInfo)
-  3. Middleware chain application
-  4. Handler.Process():
-     a. Handler-level rate limiting check
-     b. Timeout context creation (if configured)
-     c. Handler.Handle() execution
-  5. Error handling and logging
-```
-
-### Manager Operations
-
-Batch operations on jobs by state:
-- **Run operations:** Move jobs to pending (scheduled/retry/archived → pending)
-- **Archive operations:** Move jobs to archived (pending/scheduled/retry → archived)
-- **Delete operations:** Permanently remove jobs
-- **Cancel operations:** Cancel active jobs
-- **Batch operations:** Process multiple jobs, return (succeeded, failed) lists
-
-**Constraints:**
-- Cannot archive already archived jobs
-- Cannot run/delete active jobs (must cancel first)
-- Aggregating operations require group identifier
-
-## Key Types and Interfaces
-
-**Core Types:**
-- `Job`: Task with type, payload, options, fingerprint
-- `Handler`: Processes specific job types with middleware support
-- `Worker`: Processes jobs from queues with concurrency control
-- `Client`: Enqueues jobs to Redis queues
-- `Manager`: Inspects and manages jobs/queues
-- `Scheduler`: Handles cron-based periodic jobs
-
-**Configuration:**
-- `RedisConfig`: Redis connection settings
-- `WorkerConfig`: Worker concurrency, queues, error handling
-- `ClientConfig`: Client error handling, retention
-- `JobOptions`: MaxRetries, Queue, Delay, ScheduleAt, Deadline, Retention
-
-**Interfaces:**
-- `Logger`: Structured logging interface (default: slog)
-- `ClientErrorHandler`: Custom client error handling
-- `WorkerErrorHandler`: Custom worker error handling
-- `HandlerFunc`: Job processing function signature
-- `MiddlewareFunc`: Middleware function signature
+- **Progressive disclosure**: Common enqueue/worker flows stay direct; lower-level Asynq conversion remains explicit.
+- **Immutable input**: `Job` is built by `NewJob`, validates at construction, and exposes copies through accessors.
+- **Handler intent**: `Handler` is built by `NewHandler`, validates type/function/queue at construction, and exposes read-only metadata.
+- **Runtime separation**: Handlers receive `*Delivery`, not enqueue `*Job`; result writing belongs to delivery.
+- **Explicit identity**: Content digest is diagnostic; schedule ID and runtime task ID are separate facts.
 
 ## Coding Rules
 
-### Job Payload Encoding
-Use `github.com/go-json-experiment/json`, not standard library:
+### Must Follow
 
-```go
-import "github.com/go-json-experiment/json"
+- Go 1.26.3 — use modern stdlib features when they reduce code and preserve clarity.
+- Use `github.com/go-json-experiment/json` for payload and result encoding.
+- Return errors; do not panic in production code.
+- Use `%w` only for errors callers should inspect with `errors.Is` or `errors.As`.
+- Keep Asynq types inside adapter boundaries unless the API intentionally exposes an escape hatch.
+- Keep OS signal handling in applications and examples, not in package internals.
+- Close clients with `Client.Close`; Worker and Scheduler shutdown is context cancellation through `Run(ctx)`.
+- Use explicit schedule IDs for scheduler registration.
+- Copy mutable inputs such as maps, slices, payload bytes, and time pointers at boundaries.
+- Build Manager values through `NewManager`; nil Redis clients and nil inspectors are invalid input.
+- Use `t.Context()`, `b.Loop()`, `errors.AsType`, and `for range N` where the existing tests already do.
 
-payloadBytes, err := json.Marshal(j.Payload)
-var payload EmailPayload
-err := job.DecodePayload(&payload)
-```
+### Forbidden
 
-### Handler Registration
-Always specify queue when registering handlers:
+- No public `Must*` APIs or panic wrappers.
+- No reintroducing mutable public `Job` fields, `WithOptions`, job runtime ID setters, or result writers on `Job`.
+- No mutable public `Handler` fields or `Handler.Use`; handler middleware belongs in `NewHandler(..., WithMiddleware(...))`.
+- No using content digest as business dedupe, schedule identity, or runtime task identity.
+- No exposing `asynq.SkipRetry` as the public skip-retry contract; use `ErrSkipRetry`.
+- No worker handler reconstruction through `Inspector`; delivery comes from the task already in hand.
+- No `Client.Stop`; resource cleanup is `Client.Close`.
+- No raw payload or result bytes in `JobInfo` / `ActiveJobInfo`; use explicit Manager accessors.
+- No scheduler enqueue hooks without reliable schedule identity; see `reports/asynq.md`.
+- No `Logger.Fatal` or package-owned process exits.
+- No working around dependency bugs by reimplementing dependency functionality; report them instead.
 
-```go
-// Good - explicit queue
-worker.Register("email:send", handleFunc, queue.WithJobQueue("critical"))
+## Dependency Issue Reporting
 
-// Default queue if not specified
-handler := queue.NewHandler("task:type", handleFunc)  // Uses "default" queue
-```
+When a dependency bug, limitation, or unexpected behavior blocks work:
 
-Queue must match one configured in `WithWorkerQueue()` options.
+1. Do not reimplement the dependency's functionality inside this package.
+2. Create `reports/<dependency-name>.md`.
+3. Include dependency name/version, trigger scenario, expected vs actual behavior, relevant errors, and a suggested workaround if known.
+4. Continue with work that does not depend on the broken behavior.
 
-### Rate Limiting Hierarchy
-Rate limiting checked at two levels (both must pass):
-1. **Worker-level:** Global rate limit via `WithWorkerRateLimiter()`
-2. **Handler-level:** Per-handler rate limit via `WithRateLimiter()`
+## Error Handling
 
-Rate limit failures return `ErrRateLimit` with `RetryAfter` duration.
-
-### Job Result Writing
-Jobs can write results back to Redis:
-
-```go
-func handler(ctx context.Context, job *queue.Job) error {
-    result := processData(job)
-    return job.WriteResult(result)  // Requires ResultWriter to be set
-}
-```
-
-Results require `WithRetention()` option on job to persist.
-
-### Error Definitions
-Add new errors to `errors.go` with descriptive names. Use sentinel errors for known failure modes.
-
-### Worker Lifecycle
-- `Worker.Start()` blocks until shutdown
-- `Worker.Stop()` performs graceful shutdown
-- Always handle graceful shutdown in production
+- Add stable sentinels to `errors.go` for known queue failure modes.
+- Keep dependency errors as wrapped causes, not as the public semantic contract.
+- Test public error behavior with `errors.Is` / `errors.As`.
+- Avoid double logging: log at the component boundary that owns the context.
 
 ## Testing
 
-Tests require Redis and live in `tests/` directory:
-- Each test file focuses on specific component (`client_test.go`, `worker_test.go`, etc.)
-- Uses `testify` for assertions
-- Redis connection required at `localhost:6379` (DB 0)
-- Tests should clean up their own jobs/queues
-
-Run tests:
-
-```bash
-task test-with-redis  # Recommended: automatic Redis setup/cleanup
-task redis && task test && task redis-stop  # Manual Redis management
-```
-
-## Code Organization
-
-```
-queue/
-├── client.go           # Client for enqueueing jobs
-├── worker.go           # Worker for processing jobs
-├── job.go              # Job type and options
-├── handler.go          # Handler type and processing
-├── manager.go          # Manager for inspection/management
-├── scheduler.go        # Scheduler for cron jobs
-├── redis.go            # Redis configuration
-├── configs.go          # Configuration types
-├── logger.go           # Logger interface
-├── default_logger.go   # Default slog-based logger
-├── errors.go           # Error definitions
-├── state.go            # Job state types
-├── info.go             # Job info types
-├── middleware.go       # Middleware support
-├── group.go            # Handler grouping
-├── tests/              # Integration tests (requires Redis)
-├── docs/               # Feature-specific documentation
-└── examples/           # Usage examples
-```
-
-## Important Gotchas
-
-1. **Fingerprint Stability:** MD5 hash includes options, so changing options changes fingerprint
-2. **Active Job Archiving:** Cannot archive active jobs directly—must cancel first
-3. **Queue Deletion:** Queue must be empty unless `force=true`
-4. **Handler Context:** Context respects deadlines from both job options and handler timeout
-5. **Inspector Queue Names:** Manager operations require exact queue name matching
-
-## Environment Requirements
-
-- **Go:** 1.26.2
-- **Redis:** Any version compatible with go-redis v9 and Asynq
-- **golangci-lint:** 2.9.0 (managed via `.golangci.version`)
-
-## Advanced Features
-
-See `docs/` for detailed documentation:
-- [Priority Queues](./docs/priorities.md)
-- [Rate Limiting](./docs/rate_limiting.md)
-- [Job Retention and Results](./docs/retention_results.md)
-- [Job Retries](./docs/retries.md)
-- [Timeouts and Deadlines](./docs/timeouts_deadlines.md)
-- [Scheduler](./docs/scheduler.md)
-- [Config Provider for Scheduler](./docs/config_provider.md)
-- [Using Middleware](./docs/middleware.md)
-- [Error Handling](./docs/error_handling.md)
-- [Manager for Web UI Development](./docs/manager.md)
+- Root package tests should cover pure semantics without Redis when possible.
+- Integration tests live in `tests/` and require Redis on `localhost:6379`.
+- Use `testify` consistently where the suite already does; use `go-cmp` for structural diffs.
+- Keep behavior tests focused on public contracts, regressions, and runtime effects.
+- Avoid goroutine `t.Fatal`; report through channels or use `assert`/`require` on the owning goroutine.
 
 ## Agent Skills
 
-Package-local skills available in `.agents/skills/`:
+Package-local skills in `.agents/skills/`:
 
-- **agent-md-creating:** Generate CLAUDE.md for Go projects
-- **code-simplifying:** Refine recently written Go code for clarity
-- **committing:** Create conventional commits for Go packages
-- **dependency-selecting:** Select Go dependencies from kaptinlin/agentable ecosystem
-- **go-best-practices:** Google Go coding best practices and style guide
-- **linting:** Set up and run golangci-lint v2
-- **modernizing:** Go 1.20-1.26 modernization guide
-- **ralphy-initializing:** Initialize Ralphy AI coding loop configuration
-- **ralphy-todo-creating:** Create Ralphy TODO.yaml task files
-- **readme-creating:** Generate README.md for Go libraries
-- **releasing:** Guide release process for Go packages
-- **testing:** Write Go tests with testify and Go 1.25+ features
-
-Use the Skill tool to invoke these skills when relevant to your task.
+| Skill | When to Use |
+|-------|-------------|
+| [agent-md-writing](.agents/skills/agent-md-writing/) | Updating `CLAUDE.md` / `AGENTS.md` from current project state |
+| [readme-writing](.agents/skills/readme-writing/) | Updating `README.md` usage documentation |
+| [go-best-practices](.agents/skills/go-best-practices/) | Go API, naming, error, concurrency, and test judgment |
+| [modernizing](.agents/skills/modernizing/) | Adopting Go 1.20-1.26 idioms already accepted by the repo |
+| [golangci-linting](.agents/skills/golangci-linting/) | Running or fixing golangci-lint v2 |
+| [library-code-simplifying](.agents/skills/library-code-simplifying/) | Simplifying library internals while preserving behavior |
+| [library-error-optimizing](.agents/skills/library-error-optimizing/) | Tightening sentinel errors, wrappers, and boundary translation |
+| [library-legacy-pruning](.agents/skills/library-legacy-pruning/) | Removing deprecated aliases, compatibility shims, and legacy public surface |
+| [library-test-covering](.agents/skills/library-test-covering/) | Expanding production-grade test coverage |
+| [library-docs-maintaining](.agents/skills/library-docs-maintaining/) | Coordinating README and agent documentation refreshes |
+| [committing](.agents/skills/committing/) | Creating conventional commits |
+| [releasing](.agents/skills/releasing/) | Preparing version tags and release notes |

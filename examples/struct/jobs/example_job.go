@@ -17,19 +17,19 @@ type ExampleJobPayload struct {
 }
 
 // NewExampleJob creates a structured example job.
-func NewExampleJob(payload ExampleJobPayload) *queue.Job {
+func NewExampleJob(payload ExampleJobPayload) (*queue.Job, error) {
 	return queue.NewJob(ExampleJobType, payload)
 }
 
 // NewExampleHandler creates the structured example handler.
-func NewExampleHandler() *queue.Handler {
+func NewExampleHandler() (*queue.Handler, error) {
 	return queue.NewHandler(ExampleJobType, HandleExampleJob)
 }
 
 // HandleExampleJob processes the structured example job.
-func HandleExampleJob(ctx context.Context, job *queue.Job) error {
+func HandleExampleJob(ctx context.Context, delivery *queue.Delivery) error {
 	var payload ExampleJobPayload
-	if err := job.DecodePayload(&payload); err != nil {
+	if err := delivery.DecodePayload(&payload); err != nil {
 		return err
 	}
 	fmt.Printf("Processing job with input: %s\n", payload.Input)

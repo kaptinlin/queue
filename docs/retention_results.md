@@ -29,11 +29,14 @@ This configuration sets a 24-hour retention period for all jobs, providing a con
 Customize retention periods for individual jobs based on unique requirements:
 
 ```go
-job := queue.NewJob(
+job, err := queue.NewJob(
     "job_type",
     payload,
     queue.WithRetention(48*time.Hour),
 )
+if err != nil {
+    log.Fatalf("Error creating job: %v", err)
+}
 
 id, err := client.EnqueueJob(job)
 if err != nil {
@@ -45,16 +48,16 @@ if err != nil {
 
 ### Writing Results
 
-Use the `WriteResult` method within job handlers to attach execution details, output data, or metrics directly to jobs.
+Use the `WriteResult` method within job handlers to attach execution details, output data, or metrics directly to runtime deliveries.
 
 ```go
-func YourJobHandler(ctx context.Context, job *queue.Job) error {
+func YourJobHandler(ctx context.Context, delivery *queue.Delivery) error {
     result := map[string]interface{}{
         "status":  "success",
         "details": "Job executed successfully.",
     }
 
-    if err := job.WriteResult(result); err != nil {
+    if err := delivery.WriteResult(result); err != nil {
         return err
     }
 
@@ -64,13 +67,21 @@ func YourJobHandler(ctx context.Context, job *queue.Job) error {
 
 ### Accessing Results
 
-Retrieve job results with the `GetJobInfo` method for comprehensive job analysis.
+`JobInfo` reports whether a retained result exists and its byte size. Retrieve the raw encoded result explicitly with `JobResult`.
 
 ```go
-jobInfo, err := manager.GetJobInfo("queue_name", "jobID")
+jobInfo, err := manager.JobInfo("queue_name", "jobID")
 if err != nil {
-    // Handle error
+    return err
+}
+if !jobInfo.HasResult {
+    return queue.ErrJobResultNotFound
 }
 
-fmt.Println("Job Result:", jobInfo.Result)
+result, err := manager.JobResult("queue_name", "jobID")
+if err != nil {
+    return err
+}
+
+fmt.Println("Job Result:", string(result))
 ```

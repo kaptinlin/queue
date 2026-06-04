@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	"github.com/hibiken/asynq"
 )
 
 // Job errors are returned when job validation or processing fails.
@@ -14,24 +12,23 @@ var (
 	ErrNoJobQueueSpecified = errors.New("job requires a specified queue")
 	// ErrNoJobTypeSpecified is returned when a job has no type assigned.
 	ErrNoJobTypeSpecified = errors.New("job requires a specified type")
-	// ErrInvalidAsynqTask is returned when an Asynq task cannot be converted to a job.
+	// ErrInvalidJob is returned when a nil or otherwise invalid job is used.
+	ErrInvalidJob = errors.New("invalid job")
+	// ErrInvalidJobOptions is returned when job options contain invalid values.
+	ErrInvalidJobOptions = errors.New("invalid job options")
+	// ErrInvalidHandler is returned when a nil or otherwise invalid handler is used.
+	ErrInvalidHandler = errors.New("invalid handler")
+	// ErrNoHandlerFuncSpecified is returned when a handler has no processing function.
+	ErrNoHandlerFuncSpecified = errors.New("handler requires a processing function")
+	// ErrInvalidAsynqTask is returned when an Asynq task cannot produce a delivery.
 	ErrInvalidAsynqTask = errors.New("invalid asynq task")
-	// ErrJobExceededDeadline is returned when a job fails to complete
-	// before its deadline.
-	ErrJobExceededDeadline = errors.New("job failed to complete by deadline")
-	// ErrJobExceededMaxRetries is returned when a job has exhausted all
-	// retry attempts.
-	ErrJobExceededMaxRetries = errors.New("job exceeded maximum retry attempts")
 	// ErrJobProcessingTimeout is returned when a job exceeds its
 	// configured processing timeout.
 	ErrJobProcessingTimeout = errors.New("job processing exceeded timeout")
-	// ErrScheduledTimeInPast is returned when a job is scheduled for a
-	// time that has already passed.
-	ErrScheduledTimeInPast = errors.New("scheduled time must be in the future")
 	// ErrSerializationFailure is returned when job payload serialization
 	// or deserialization fails.
 	ErrSerializationFailure = errors.New("failure in serialization process")
-	// ErrResultWriterNotSet is returned when [Job.WriteResult] is called
+	// ErrResultWriterNotSet is returned when [Delivery.WriteResult] is called
 	// but no result writer has been configured.
 	ErrResultWriterNotSet = errors.New("result writer is not set for the job")
 	// ErrFailedToWriteResult is returned when writing a job result to
@@ -47,28 +44,48 @@ var (
 	ErrInvalidJobState = errors.New("invalid job state")
 	// ErrJobNotFound is returned when a job cannot be found by its ID.
 	ErrJobNotFound = errors.New("job not found")
+	// ErrJobResultNotFound is returned when a retained job has no stored result.
+	ErrJobResultNotFound = errors.New("job result not found")
+	// ErrInvalidContext is returned when a required context is nil.
+	ErrInvalidContext = errors.New("context cannot be nil")
 )
 
 // Worker errors are returned when worker configuration or lifecycle operations fail.
 var (
-	// ErrInvalidWorkerConfig is returned when the worker configuration
-	// fails validation.
-	ErrInvalidWorkerConfig = errors.New("invalid worker configuration")
 	// ErrInvalidWorkerQueues is returned when no queues are configured
 	// for the worker.
 	ErrInvalidWorkerQueues = errors.New("worker requires at least one queue")
 	// ErrInvalidWorkerConcurrency is returned when the worker concurrency
 	// is set to zero or a negative value.
 	ErrInvalidWorkerConcurrency = errors.New("worker requires a positive concurrency value")
-	// ErrWorkerAlreadyStarted is returned when [Worker.Start] is called
+	// ErrWorkerAlreadyStarted is returned when [Worker.Run] is called
 	// on a worker that is already running.
 	ErrWorkerAlreadyStarted = errors.New("worker already started")
+	// ErrWorkerStopped is returned when a worker is started after it has
+	// been shut down.
+	ErrWorkerStopped = errors.New("worker already stopped")
 	// ErrHandlerAlreadyRegistered is returned when a handler for the
 	// same job type is registered more than once.
 	ErrHandlerAlreadyRegistered = errors.New("handler already registered")
 	// ErrWorkerNotFound is returned when a worker cannot be found by
 	// its ID.
 	ErrWorkerNotFound = errors.New("worker not found")
+)
+
+// Scheduler errors are returned when scheduler configuration or lifecycle operations fail.
+var (
+	// ErrSchedulerAlreadyStarted is returned when [Scheduler.Run] is called
+	// on a scheduler that is already running.
+	ErrSchedulerAlreadyStarted = errors.New("scheduler already started")
+	// ErrSchedulerStopped is returned when a scheduler is started after
+	// it has been shut down.
+	ErrSchedulerStopped = errors.New("scheduler already stopped")
+	// ErrInvalidPeriodicInterval is returned when a periodic schedule
+	// is registered with a non-positive interval.
+	ErrInvalidPeriodicInterval = errors.New("periodic interval must be positive")
+	// ErrInvalidSyncInterval is returned when a scheduler sync interval
+	// is zero or negative.
+	ErrInvalidSyncInterval = errors.New("scheduler sync interval must be positive")
 )
 
 // Redis errors are returned when Redis configuration validation fails.
@@ -87,9 +104,18 @@ var (
 	// ErrRedisTLSRequired is returned when a rediss:// URL is used
 	// without providing a TLS configuration.
 	ErrRedisTLSRequired = errors.New("TLS configuration required for rediss:// connections")
+	// ErrRedisInvalidDB is returned when the Redis DB number is negative.
+	ErrRedisInvalidDB = errors.New("redis db cannot be negative")
+	// ErrRedisInvalidPoolSize is returned when Redis pool size is negative.
+	ErrRedisInvalidPoolSize = errors.New("redis pool size cannot be negative")
+	// ErrRedisInvalidTimeout is returned when a Redis timeout is negative.
+	ErrRedisInvalidTimeout = errors.New("redis timeout cannot be negative")
 	// ErrRedisClientNotSupported is returned when the Redis client type
 	// is not supported by the manager.
 	ErrRedisClientNotSupported = errors.New("redis client type not supported")
+	// ErrRedisUnavailable is returned when Redis cannot serve an
+	// operation because the server or connection is unavailable.
+	ErrRedisUnavailable = errors.New("redis unavailable")
 )
 
 // Manager errors are returned when queue management operations fail.
@@ -103,6 +129,12 @@ var (
 	// ErrGroupRequiredForAggregation is returned when an aggregating
 	// operation is attempted without specifying a group identifier.
 	ErrGroupRequiredForAggregation = errors.New("group identifier required for aggregating jobs")
+	// ErrInvalidManagerClient is returned when a manager is constructed
+	// without a Redis client.
+	ErrInvalidManagerClient = errors.New("manager requires redis client")
+	// ErrInvalidManagerInspector is returned when a manager is constructed
+	// without an Asynq inspector.
+	ErrInvalidManagerInspector = errors.New("manager requires inspector")
 	// ErrUnsupportedJobStateForAction is returned when the job state
 	// does not support the requested action.
 	ErrUnsupportedJobStateForAction = errors.New("unsupported job state for the requested action")
@@ -114,7 +146,7 @@ var (
 )
 
 // ErrSkipRetry indicates a condition to skip retries and move the job to the archive.
-var ErrSkipRetry = asynq.SkipRetry
+var ErrSkipRetry = errors.New("skip retry")
 
 // NewSkipRetryError creates and wraps a SkipRetry error with a custom message.
 func NewSkipRetryError(reason string) error {

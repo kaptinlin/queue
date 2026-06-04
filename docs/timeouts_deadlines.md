@@ -17,17 +17,20 @@ import (
     "time"
 )
 
-func EmailJobHandler(ctx context.Context, job *queue.Job) error {
+func EmailJobHandler(ctx context.Context, delivery *queue.Delivery) error {
     // Define job logic here
     return nil
 }
 
 // Create a handler for email jobs with a 30-second execution timeout
-handler := queue.NewHandler(
+handler, err := queue.NewHandler(
     "email_job",
     EmailJobHandler,
     queue.WithJobTimeout(30*time.Second),
 )
+if err != nil {
+    log.Fatalf("Failed to create handler: %v", err)
+}
 ```
 
 ## Deadlines
@@ -42,11 +45,14 @@ Apply a deadline to a job using the `WithDeadline` option during job creation to
 deadline := time.Now().Add(24 * time.Hour) // Set a 24-hour deadline
 
 // Create a job with a specific deadline
-job := queue.NewJob(
+job, err := queue.NewJob(
     "report_generation",
     map[string]interface{}{"reportId": 123},
     queue.WithDeadline(&deadline),
 )
+if err != nil {
+    log.Fatalf("Failed to create job: %v", err)
+}
 
 // Enqueue the job, handling any errors
 id, err := client.EnqueueJob(job)

@@ -81,9 +81,9 @@ func TestRunJobsByState_EmptyQueue(t *testing.T) {
 
 	// Ensure the queue exists but is empty by enqueuing and deleting.
 	client, ids := enqueueTestJobs(t, 1)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
-	_, _, err := manager.BatchDeleteJobs(managerTestQueue, ids)
+	_, err := manager.BatchDeleteJobs(managerTestQueue, ids)
 	require.NoError(t, err)
 
 	for _, state := range []queue.JobState{
@@ -103,7 +103,7 @@ func TestRunJobsByState_ScheduledJobs(t *testing.T) {
 
 	future := time.Now().Add(24 * time.Hour)
 	client, _ := enqueueTestJobs(t, 3, queue.WithScheduleAt(&future))
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	count, err := manager.RunJobsByState(managerTestQueue, queue.StateScheduled)
 	assert.NoError(t, err)
@@ -116,7 +116,7 @@ func TestRunJobsByState_ArchivedJobs(t *testing.T) {
 
 	// Enqueue pending jobs, then archive them, then run them.
 	client, _ := enqueueTestJobs(t, 2)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	archived, err := manager.ArchiveJobsByState(managerTestQueue, queue.StatePending)
 	require.NoError(t, err)
@@ -168,9 +168,9 @@ func TestArchiveJobsByState_EmptyQueue(t *testing.T) {
 
 	// Ensure queue exists but is empty.
 	client, ids := enqueueTestJobs(t, 1)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
-	_, _, err := manager.BatchDeleteJobs(managerTestQueue, ids)
+	_, err := manager.BatchDeleteJobs(managerTestQueue, ids)
 	require.NoError(t, err)
 
 	for _, state := range []queue.JobState{
@@ -189,7 +189,7 @@ func TestArchiveJobsByState_PendingJobs(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 3)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	count, err := manager.ArchiveJobsByState(managerTestQueue, queue.StatePending)
 	assert.NoError(t, err)
@@ -202,7 +202,7 @@ func TestArchiveJobsByState_ScheduledJobs(t *testing.T) {
 
 	future := time.Now().Add(24 * time.Hour)
 	client, _ := enqueueTestJobs(t, 2, queue.WithScheduleAt(&future))
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	count, err := manager.ArchiveJobsByState(managerTestQueue, queue.StateScheduled)
 	assert.NoError(t, err)
@@ -230,7 +230,7 @@ func TestDeleteJobsByState_UnsupportedStates(t *testing.T) {
 		want  error
 	}{
 		{"Active", queue.StateActive, queue.ErrOperationNotSupported},
-		{"Aggregating", queue.StateAggregating, queue.ErrOperationNotSupported},
+		{"Aggregating", queue.StateAggregating, queue.ErrGroupRequiredForAggregation},
 	}
 
 	for _, tt := range tests {
@@ -248,9 +248,9 @@ func TestDeleteJobsByState_EmptyQueue(t *testing.T) {
 
 	// Ensure queue exists but is empty.
 	client, ids := enqueueTestJobs(t, 1)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
-	_, _, err := manager.BatchDeleteJobs(managerTestQueue, ids)
+	_, err := manager.BatchDeleteJobs(managerTestQueue, ids)
 	require.NoError(t, err)
 
 	for _, state := range []queue.JobState{
@@ -270,7 +270,7 @@ func TestDeleteJobsByState_PendingJobs(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 3)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	count, err := manager.DeleteJobsByState(managerTestQueue, queue.StatePending)
 	assert.NoError(t, err)
@@ -282,7 +282,7 @@ func TestDeleteJobsByState_ArchivedJobs(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 2)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	archived, err := manager.ArchiveJobsByState(managerTestQueue, queue.StatePending)
 	require.NoError(t, err)
@@ -299,7 +299,7 @@ func TestDeleteJobsByState_ScheduledJobs(t *testing.T) {
 
 	future := time.Now().Add(24 * time.Hour)
 	client, _ := enqueueTestJobs(t, 2, queue.WithScheduleAt(&future))
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	count, err := manager.DeleteJobsByState(managerTestQueue, queue.StateScheduled)
 	assert.NoError(t, err)
@@ -312,10 +312,10 @@ func TestBatchRunJobs_EmptySlice(t *testing.T) {
 	manager := setupTestManager()
 	defer cleanupManagerTestQueue(t, manager)
 
-	succeeded, failed, err := manager.BatchRunJobs(managerTestQueue, []string{})
+	result, err := manager.BatchRunJobs(managerTestQueue, []string{})
 	assert.NoError(t, err)
-	assert.Empty(t, succeeded)
-	assert.Empty(t, failed)
+	assert.Empty(t, result.Succeeded)
+	assert.Empty(t, result.Failed)
 }
 
 func TestBatchRunJobs_NonExistentIDs(t *testing.T) {
@@ -324,17 +324,19 @@ func TestBatchRunJobs_NonExistentIDs(t *testing.T) {
 
 	// Ensure queue exists.
 	client, ids := enqueueTestJobs(t, 1)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 	defer func() { cleanupManagerTestQueue(t, manager) }()
 
 	fakeIDs := []string{"nonexistent-1", "nonexistent-2"}
-	succeeded, failed, err := manager.BatchRunJobs(managerTestQueue, fakeIDs)
+	result, err := manager.BatchRunJobs(managerTestQueue, fakeIDs)
 	assert.Error(t, err)
-	assert.Empty(t, succeeded)
-	assert.Len(t, failed, 2)
+	assert.Empty(t, result.Succeeded)
+	require.Len(t, result.Failed, 2)
+	assert.Equal(t, "nonexistent-1", result.Failed[0].JobID)
+	assert.ErrorIs(t, result.Failed[0].Err, queue.ErrJobNotFound)
 
 	// Cleanup the real job.
-	_, _, err = manager.BatchDeleteJobs(managerTestQueue, ids)
+	_, err = manager.BatchDeleteJobs(managerTestQueue, ids)
 	assert.NoError(t, err)
 }
 
@@ -345,17 +347,18 @@ func TestBatchRunJobs_PartialFailure(t *testing.T) {
 	// Enqueue scheduled jobs (can be "run").
 	future := time.Now().Add(24 * time.Hour)
 	client, ids := enqueueTestJobs(t, 2, queue.WithScheduleAt(&future))
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	// Mix valid scheduled IDs with a fake ID.
 	mixedIDs := make([]string, 0, len(ids)+1)
 	mixedIDs = append(mixedIDs, ids...)
 	mixedIDs = append(mixedIDs, "nonexistent-id")
-	succeeded, failed, err := manager.BatchRunJobs(managerTestQueue, mixedIDs)
+	result, err := manager.BatchRunJobs(managerTestQueue, mixedIDs)
 	assert.Error(t, err, "should have partial error")
-	assert.Len(t, succeeded, 2)
-	assert.Len(t, failed, 1)
-	assert.Equal(t, "nonexistent-id", failed[0])
+	assert.Len(t, result.Succeeded, 2)
+	require.Len(t, result.Failed, 1)
+	assert.Equal(t, "nonexistent-id", result.Failed[0].JobID)
+	assert.ErrorIs(t, err, queue.ErrJobNotFound)
 }
 
 // --- BatchArchiveJobs boundary cases ---
@@ -364,21 +367,26 @@ func TestBatchArchiveJobs_EmptySlice(t *testing.T) {
 	manager := setupTestManager()
 	defer cleanupManagerTestQueue(t, manager)
 
-	succeeded, failed, err := manager.BatchArchiveJobs(managerTestQueue, []string{})
+	result, err := manager.BatchArchiveJobs(managerTestQueue, []string{})
 	assert.NoError(t, err)
-	assert.Empty(t, succeeded)
-	assert.Empty(t, failed)
+	assert.Empty(t, result.Succeeded)
+	assert.Empty(t, result.Failed)
 }
 
 func TestBatchArchiveJobs_NonExistentIDs(t *testing.T) {
 	manager := setupTestManager()
 	defer cleanupManagerTestQueue(t, manager)
 
+	client, ids := enqueueTestJobs(t, 1)
+	defer func() { assert.NoError(t, client.Close()) }()
+	require.NoError(t, manager.DeleteJob(managerTestQueue, ids[0]))
+
 	fakeIDs := []string{"nonexistent-1", "nonexistent-2"}
-	succeeded, failed, err := manager.BatchArchiveJobs(managerTestQueue, fakeIDs)
+	result, err := manager.BatchArchiveJobs(managerTestQueue, fakeIDs)
 	assert.Error(t, err)
-	assert.Empty(t, succeeded)
-	assert.Len(t, failed, 2)
+	assert.Empty(t, result.Succeeded)
+	require.Len(t, result.Failed, 2)
+	assert.ErrorIs(t, result.Failed[0].Err, queue.ErrJobNotFound)
 }
 
 func TestBatchArchiveJobs_AllSucceed(t *testing.T) {
@@ -386,12 +394,12 @@ func TestBatchArchiveJobs_AllSucceed(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 3)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
-	succeeded, failed, err := manager.BatchArchiveJobs(managerTestQueue, ids)
+	result, err := manager.BatchArchiveJobs(managerTestQueue, ids)
 	assert.NoError(t, err)
-	assert.Len(t, succeeded, 3)
-	assert.Empty(t, failed)
+	assert.Len(t, result.Succeeded, 3)
+	assert.Empty(t, result.Failed)
 }
 
 func TestBatchArchiveJobs_PartialFailure(t *testing.T) {
@@ -399,15 +407,17 @@ func TestBatchArchiveJobs_PartialFailure(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 2)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	mixedIDs := make([]string, 0, len(ids)+1)
 	mixedIDs = append(mixedIDs, ids...)
 	mixedIDs = append(mixedIDs, "nonexistent-id")
-	succeeded, failed, err := manager.BatchArchiveJobs(managerTestQueue, mixedIDs)
+	result, err := manager.BatchArchiveJobs(managerTestQueue, mixedIDs)
 	assert.Error(t, err)
-	assert.Len(t, succeeded, 2)
-	assert.Len(t, failed, 1)
+	assert.Len(t, result.Succeeded, 2)
+	require.Len(t, result.Failed, 1)
+	assert.Equal(t, "nonexistent-id", result.Failed[0].JobID)
+	assert.ErrorIs(t, err, queue.ErrJobNotFound)
 }
 
 // --- BatchDeleteJobs boundary cases ---
@@ -416,21 +426,26 @@ func TestBatchDeleteJobs_EmptySlice(t *testing.T) {
 	manager := setupTestManager()
 	defer cleanupManagerTestQueue(t, manager)
 
-	succeeded, failed, err := manager.BatchDeleteJobs(managerTestQueue, []string{})
+	result, err := manager.BatchDeleteJobs(managerTestQueue, []string{})
 	assert.NoError(t, err)
-	assert.Empty(t, succeeded)
-	assert.Empty(t, failed)
+	assert.Empty(t, result.Succeeded)
+	assert.Empty(t, result.Failed)
 }
 
 func TestBatchDeleteJobs_NonExistentIDs(t *testing.T) {
 	manager := setupTestManager()
 	defer cleanupManagerTestQueue(t, manager)
 
+	client, ids := enqueueTestJobs(t, 1)
+	defer func() { assert.NoError(t, client.Close()) }()
+	require.NoError(t, manager.DeleteJob(managerTestQueue, ids[0]))
+
 	fakeIDs := []string{"nonexistent-1", "nonexistent-2"}
-	succeeded, failed, err := manager.BatchDeleteJobs(managerTestQueue, fakeIDs)
+	result, err := manager.BatchDeleteJobs(managerTestQueue, fakeIDs)
 	assert.Error(t, err)
-	assert.Empty(t, succeeded)
-	assert.Len(t, failed, 2)
+	assert.Empty(t, result.Succeeded)
+	require.Len(t, result.Failed, 2)
+	assert.ErrorIs(t, result.Failed[0].Err, queue.ErrJobNotFound)
 }
 
 func TestBatchDeleteJobs_AllSucceed(t *testing.T) {
@@ -438,12 +453,12 @@ func TestBatchDeleteJobs_AllSucceed(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 3)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
-	succeeded, failed, err := manager.BatchDeleteJobs(managerTestQueue, ids)
+	result, err := manager.BatchDeleteJobs(managerTestQueue, ids)
 	assert.NoError(t, err)
-	assert.Len(t, succeeded, 3)
-	assert.Empty(t, failed)
+	assert.Len(t, result.Succeeded, 3)
+	assert.Empty(t, result.Failed)
 }
 
 func TestBatchDeleteJobs_PartialFailure(t *testing.T) {
@@ -451,15 +466,17 @@ func TestBatchDeleteJobs_PartialFailure(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 2)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	mixedIDs := make([]string, 0, len(ids)+1)
 	mixedIDs = append(mixedIDs, ids...)
 	mixedIDs = append(mixedIDs, "nonexistent-id")
-	succeeded, failed, err := manager.BatchDeleteJobs(managerTestQueue, mixedIDs)
+	result, err := manager.BatchDeleteJobs(managerTestQueue, mixedIDs)
 	assert.Error(t, err)
-	assert.Len(t, succeeded, 2)
-	assert.Len(t, failed, 1)
+	assert.Len(t, result.Succeeded, 2)
+	require.Len(t, result.Failed, 1)
+	assert.Equal(t, "nonexistent-id", result.Failed[0].JobID)
+	assert.ErrorIs(t, err, queue.ErrJobNotFound)
 }
 
 // --- Cross-operation boundary cases ---
@@ -471,7 +488,7 @@ func TestRunThenDeleteByState(t *testing.T) {
 	// Enqueue scheduled jobs, run them all, then delete pending.
 	future := time.Now().Add(24 * time.Hour)
 	client, _ := enqueueTestJobs(t, 3, queue.WithScheduleAt(&future))
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	runCount, err := manager.RunJobsByState(managerTestQueue, queue.StateScheduled)
 	require.NoError(t, err)
@@ -489,7 +506,7 @@ func TestArchiveThenRunByState(t *testing.T) {
 
 	// Enqueue pending jobs, archive them, then run archived.
 	client, _ := enqueueTestJobs(t, 2)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	archCount, err := manager.ArchiveJobsByState(managerTestQueue, queue.StatePending)
 	require.NoError(t, err)
@@ -510,7 +527,7 @@ func TestArchiveThenDeleteByState(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 3)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	archCount, err := manager.ArchiveJobsByState(managerTestQueue, queue.StatePending)
 	require.NoError(t, err)
@@ -526,7 +543,7 @@ func TestDoubleArchiveByState_ReturnsZero(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 2)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	count, err := manager.ArchiveJobsByState(managerTestQueue, queue.StatePending)
 	require.NoError(t, err)
@@ -543,7 +560,7 @@ func TestDoubleDeleteByState_ReturnsZero(t *testing.T) {
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 2)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	count, err := manager.DeleteJobsByState(managerTestQueue, queue.StatePending)
 	require.NoError(t, err)

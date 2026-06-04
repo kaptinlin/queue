@@ -39,12 +39,13 @@ func toWorkerInfo(info *asynq.ServerInfo) *WorkerInfo {
 
 // ActiveJobInfo contains information about a job currently being processed.
 type ActiveJobInfo struct {
-	JobID      string    `json:"job_id"`
-	JobType    string    `json:"job_type"`
-	JobPayload string    `json:"job_payload"`
-	Queue      string    `json:"queue"`
-	StartedAt  time.Time `json:"started_at"`
-	DeadlineAt time.Time `json:"deadline_at"`
+	JobID       string    `json:"job_id"`
+	JobType     string    `json:"job_type"`
+	HasPayload  bool      `json:"has_payload"`
+	PayloadSize int       `json:"payload_size"`
+	Queue       string    `json:"queue"`
+	StartedAt   time.Time `json:"started_at"`
+	DeadlineAt  time.Time `json:"deadline_at"`
 }
 
 // toActiveJobInfo converts asynq.WorkerInfo to ActiveJobInfo.
@@ -53,12 +54,13 @@ func toActiveJobInfo(info *asynq.WorkerInfo) *ActiveJobInfo {
 		return nil
 	}
 	return &ActiveJobInfo{
-		JobID:      info.TaskID,
-		JobType:    info.TaskType,
-		JobPayload: string(info.TaskPayload),
-		Queue:      info.Queue,
-		StartedAt:  info.Started,
-		DeadlineAt: info.Deadline,
+		JobID:       info.TaskID,
+		JobType:     info.TaskType,
+		HasPayload:  len(info.TaskPayload) > 0,
+		PayloadSize: len(info.TaskPayload),
+		Queue:       info.Queue,
+		StartedAt:   info.Started,
+		DeadlineAt:  info.Deadline,
 	}
 }
 
@@ -146,11 +148,14 @@ type JobInfo struct {
 	ID            string     `json:"id"`
 	Type          string     `json:"type"`
 	State         JobState   `json:"state"`
-	Payload       string     `json:"payload"`
+	HasPayload    bool       `json:"has_payload"`
+	PayloadSize   int        `json:"payload_size"`
 	Queue         string     `json:"queue"`
 	MaxRetry      int        `json:"max_retry"`
 	Retried       int        `json:"retried"`
 	LastError     string     `json:"last_error"`
+	HasResult     bool       `json:"has_result"`
+	ResultSize    int        `json:"result_size"`
 	NextProcessAt *time.Time `json:"next_process_at,omitempty"`
 	LastFailedAt  *time.Time `json:"last_failed_at,omitempty"`
 	CompletedAt   *time.Time `json:"completed_at,omitempty"`
@@ -158,7 +163,6 @@ type JobInfo struct {
 	DeadlineAt    *time.Time `json:"deadline_at,omitempty"`
 	IsOrphaned    bool       `json:"is_orphaned,omitempty"`
 	Group         *string    `json:"group,omitempty"`
-	Result        *string    `json:"result,omitempty"`
 }
 
 // toJobInfo converts asynq.TaskInfo and optional asynq.WorkerInfo to JobInfo.
@@ -171,15 +175,18 @@ func toJobInfo(ti *asynq.TaskInfo, wi *asynq.WorkerInfo) *JobInfo {
 		state = JobState(ti.State.String())
 	}
 	jobInfo := &JobInfo{
-		ID:         ti.ID,
-		Type:       ti.Type,
-		State:      state,
-		Payload:    string(ti.Payload),
-		Queue:      ti.Queue,
-		MaxRetry:   ti.MaxRetry,
-		Retried:    ti.Retried,
-		LastError:  ti.LastErr,
-		IsOrphaned: ti.IsOrphaned,
+		ID:          ti.ID,
+		Type:        ti.Type,
+		State:       state,
+		HasPayload:  len(ti.Payload) > 0,
+		PayloadSize: len(ti.Payload),
+		Queue:       ti.Queue,
+		MaxRetry:    ti.MaxRetry,
+		Retried:     ti.Retried,
+		LastError:   ti.LastErr,
+		HasResult:   ti.Result != nil,
+		ResultSize:  len(ti.Result),
+		IsOrphaned:  ti.IsOrphaned,
 	}
 
 	if !ti.NextProcessAt.IsZero() {
@@ -205,10 +212,6 @@ func toJobInfo(ti *asynq.TaskInfo, wi *asynq.WorkerInfo) *JobInfo {
 		if !wi.Deadline.IsZero() {
 			jobInfo.DeadlineAt = &wi.Deadline
 		}
-	}
-
-	if ti.Result != nil {
-		jobInfo.Result = new(string(ti.Result))
 	}
 
 	return jobInfo

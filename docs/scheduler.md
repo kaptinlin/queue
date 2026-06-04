@@ -20,32 +20,11 @@ if err != nil {
 }
 ```
 
-## Configuring Hooks for Job Lifecycle Management
+## Schedule Identity
 
-### Pre-Enqueue Hook
+Every registration uses an explicit schedule ID. The schedule ID identifies the schedule definition; it is separate from the runtime task ID returned when a job is enqueued.
 
-Incorporate custom logic prior to job enqueuing:
-
-```go
-scheduler.WithPreEnqueueFunc(func(job *queue.Job) {
-    // Insert pre-enqueue operations here
-    log.Printf("Job preparation: %s\n", job.Type)
-})
-```
-
-### Post-Enqueue Hook
-
-Execute follow-up actions after job enqueuing, especially for error handling:
-
-```go
-scheduler.WithPostEnqueueFunc(func(job *queue.JobInfo, err error) {
-    if err != nil {
-        log.Printf("Enqueue failed for job: %s, error: %v\n", job.Type, err)
-    } else {
-        log.Printf("Job enqueued successfully: %s\n", job.Type)
-    }
-})
-```
+Scheduler enqueue hooks are not exposed by `queue` because Asynq does not provide the periodic schedule ID to its enqueue callbacks. Guessing the schedule ID from task type, payload, or options is ambiguous when two schedules use the same job spec.
 
 ## Job Scheduling
 
@@ -58,7 +37,7 @@ jobType := "report:generate"
 payload := map[string]interface{}{"reportType": "weekly"}
 cronExpression := "0 9 * * 1" // Example: Every Monday at 9:00 AM
 
-_, err = scheduler.RegisterCron(cronExpression, jobType, payload)
+_, err = scheduler.RegisterCron("daily-report", cronExpression, jobType, payload)
 if err != nil {
     log.Fatalf("Cron job scheduling failed: %v", err)
 }
@@ -73,7 +52,7 @@ jobType := "status:check"
 payload := map[string]interface{}{"target": "database"}
 interval := 15 * time.Minute // Example: Every 15 minutes
 
-_, err = scheduler.RegisterPeriodic(interval, jobType, payload)
+_, err = scheduler.RegisterPeriodic("heartbeat", interval, jobType, payload)
 if err != nil {
     log.Fatalf("Periodic job scheduling failed: %v", err)
 }
@@ -81,18 +60,17 @@ if err != nil {
 
 ## Scheduler Operations
 
-**Starting the Scheduler:**
+**Running the Scheduler:**
 
 ```go
-if err := scheduler.Start(); err != nil {
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+
+if err := scheduler.Run(ctx); err != nil {
     log.Fatal("Starting scheduler failed:", err)
 }
 ```
 
-**Stopping the Scheduler:**
-
-```go
-if err := scheduler.Stop(); err != nil {
-    log.Println("Scheduler shutdown error:", err)
-}
-```
+Cancel the context to shut the scheduler down gracefully. Hosts that run the
+scheduler from another goroutine should still keep cancellation ownership at the
+application boundary.

@@ -22,13 +22,13 @@ func TestGlobalMiddleware(t *testing.T) {
 		processedJobs int
 	)
 	globalMiddleware := func(next queue.HandlerFunc) queue.HandlerFunc {
-		return func(ctx context.Context, job *queue.Job) error {
+		return func(ctx context.Context, delivery *queue.Delivery) error {
 			mu.Lock()
 			defer mu.Unlock()
 
 			processedJobs++
-			t.Logf("Processing job: %v", job.Type)
-			return next(ctx, job)
+			t.Logf("Processing delivery: %v", delivery.Type())
+			return next(ctx, delivery)
 		}
 	}
 
@@ -38,18 +38,12 @@ func TestGlobalMiddleware(t *testing.T) {
 
 	// Register a dummy job handler
 	jobType := "dummyJob"
-	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
 		return nil // Simulate successful job processing
 	})
 	require.NoError(t, err, "Failed to register dummy job handler")
 
-	// Start the worker in a goroutine
-	go func() {
-		assert.NoError(t, worker.Start(), "Failed to start worker")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop(), "Failed to stop worker")
-	}()
+	runWorker(t, worker)
 
 	// Give the worker some time to start
 	time.Sleep(2 * time.Second)
@@ -64,9 +58,6 @@ func TestGlobalMiddleware(t *testing.T) {
 
 	// Wait a bit for jobs to be processed
 	time.Sleep(5 * time.Second) // Adjusted wait time for job processing
-
-	// Stop the worker and check the middleware count
-	assert.NoError(t, worker.Stop(), "Failed to stop worker")
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -83,13 +74,13 @@ func TestScopedMiddleware(t *testing.T) {
 		processedJobs int
 	)
 	scopedMiddleware := func(next queue.HandlerFunc) queue.HandlerFunc {
-		return func(ctx context.Context, job *queue.Job) error {
+		return func(ctx context.Context, delivery *queue.Delivery) error {
 			mu.Lock()
 			processedJobs++
 			mu.Unlock()
 
-			t.Logf("Processing job: %v", job.Type)
-			return next(ctx, job)
+			t.Logf("Processing delivery: %v", delivery.Type())
+			return next(ctx, delivery)
 		}
 	}
 
@@ -98,19 +89,13 @@ func TestScopedMiddleware(t *testing.T) {
 
 	// Register a dummy job handler with scoped middleware
 	jobType := "scopedJob"
-	handlerFunc := func(ctx context.Context, job *queue.Job) error {
+	handlerFunc := func(context.Context, *queue.Delivery) error {
 		return nil // Simulate successful job processing
 	}
 	err = worker.Register(jobType, handlerFunc, queue.WithMiddleware(scopedMiddleware))
 	require.NoError(t, err, "Failed to register dummy job handler with scoped middleware")
 
-	// Start the worker in a goroutine to process jobs.
-	go func() {
-		assert.NoError(t, worker.Start(), "Failed to start worker")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop(), "Failed to stop worker")
-	}() // Ensure worker is stopped after the test.
+	runWorker(t, worker)
 
 	// Allow some time for the worker to initialize.
 	time.Sleep(2 * time.Second)

@@ -15,13 +15,13 @@ func TestMemoryConfigProvider_RegisterDuplicate(t *testing.T) {
 	t.Parallel()
 
 	p := queue.NewMemoryConfigProvider()
-	job := queue.NewJob("test", nil)
+	job := newJob(t, "test", nil)
 
-	_, err := p.RegisterCronJob("* * * * *", job)
+	_, err := p.RegisterCronJob("test-schedule", "* * * * *", job)
 	require.NoError(t, err)
 
-	_, err = p.RegisterCronJob("* * * * *", job)
-	assert.ErrorIs(t, err, queue.ErrJobAlreadyExists)
+	_, err = p.RegisterCronJob("test-schedule", "* * * * *", job)
+	assert.ErrorIs(t, err, queue.ErrScheduleAlreadyExists)
 }
 
 func TestMemoryConfigProvider_UnregisterNotFound(t *testing.T) {
@@ -29,16 +29,16 @@ func TestMemoryConfigProvider_UnregisterNotFound(t *testing.T) {
 
 	p := queue.NewMemoryConfigProvider()
 	err := p.UnregisterJob("nonexistent")
-	assert.ErrorIs(t, err, queue.ErrConfigJobNotFound)
+	assert.ErrorIs(t, err, queue.ErrScheduleNotFound)
 }
 
 func TestMemoryConfigProvider_UnregisterRemovesJob(t *testing.T) {
 	t.Parallel()
 
 	p := queue.NewMemoryConfigProvider()
-	job := queue.NewJob("test", nil)
+	job := newJob(t, "test", nil)
 
-	id, err := p.RegisterCronJob("* * * * *", job)
+	id, err := p.RegisterCronJob("test-schedule", "* * * * *", job)
 	require.NoError(t, err)
 
 	require.NoError(t, p.UnregisterJob(id))
@@ -46,7 +46,7 @@ func TestMemoryConfigProvider_UnregisterRemovesJob(t *testing.T) {
 	configs, err := p.GetConfigs()
 	require.NoError(t, err)
 	assert.Empty(t, configs)
-	assert.ErrorIs(t, p.UnregisterJob(id), queue.ErrConfigJobNotFound)
+	assert.ErrorIs(t, p.UnregisterJob(id), queue.ErrScheduleNotFound)
 }
 
 func TestMemoryConfigProvider_GetConfigs(t *testing.T) {
@@ -54,12 +54,12 @@ func TestMemoryConfigProvider_GetConfigs(t *testing.T) {
 
 	p := queue.NewMemoryConfigProvider()
 
-	j1 := queue.NewJob("job1", map[string]string{"k": "v1"})
-	j2 := queue.NewJob("job2", map[string]string{"k": "v2"})
+	j1 := newJob(t, "job1", map[string]string{"k": "v1"})
+	j2 := newJob(t, "job2", map[string]string{"k": "v2"})
 
-	_, err := p.RegisterCronJob("* * * * *", j1)
+	_, err := p.RegisterCronJob("job1-schedule", "* * * * *", j1)
 	require.NoError(t, err)
-	_, err = p.RegisterCronJob("*/5 * * * *", j2)
+	_, err = p.RegisterCronJob("job2-schedule", "*/5 * * * *", j2)
 	require.NoError(t, err)
 
 	configs, err := p.GetConfigs()
@@ -76,31 +76,31 @@ func TestMemoryConfigProvider_GetConfigs_Empty(t *testing.T) {
 	assert.Empty(t, configs)
 }
 
-func TestMemoryConfigProvider_RegisterDuplicateFingerprint(t *testing.T) {
+func TestMemoryConfigProvider_AllowsDuplicateContentWithDifferentScheduleIDs(t *testing.T) {
 	t.Parallel()
 
 	p := queue.NewMemoryConfigProvider()
-	j1 := queue.NewJob("test", map[string]string{"k": "v"})
-	j2 := queue.NewJob("test", map[string]string{"k": "v"})
+	j1 := newJob(t, "test", map[string]string{"k": "v"})
+	j2 := newJob(t, "test", map[string]string{"k": "v"})
 
-	_, err := p.RegisterCronJob("* * * * *", j1)
+	_, err := p.RegisterCronJob("first", "* * * * *", j1)
 	require.NoError(t, err)
 
-	_, err = p.RegisterCronJob("*/5 * * * *", j2)
-	assert.ErrorIs(t, err, queue.ErrJobAlreadyExists)
+	_, err = p.RegisterCronJob("second", "*/5 * * * *", j2)
+	assert.NoError(t, err)
 }
 
-func TestMemoryConfigProvider_GetConfigsErrors(t *testing.T) {
+func TestMemoryConfigProvider_RegisterValidation(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name string
-		job  *queue.Job
-		want error
+		name       string
+		identifier string
+		job        *queue.Job
+		want       error
 	}{
-		{name: "empty type", job: queue.NewJob("", nil), want: queue.ErrNoJobTypeSpecified},
-		{name: "empty queue", job: queue.NewJob("test", nil, queue.WithQueue("")), want: queue.ErrNoJobQueueSpecified},
-		{name: "serialization failure", job: queue.NewJob("test", func() {}), want: queue.ErrSerializationFailure},
+		{name: "empty identifier", identifier: "", job: newJob(t, "test", nil), want: queue.ErrNoScheduleIDSpecified},
+		{name: "nil job", identifier: "test", job: nil, want: queue.ErrInvalidJob},
 	}
 
 	for _, tc := range tests {
@@ -108,11 +108,8 @@ func TestMemoryConfigProvider_GetConfigsErrors(t *testing.T) {
 			t.Parallel()
 
 			p := queue.NewMemoryConfigProvider()
-			_, err := p.RegisterCronJob("* * * * *", tc.job)
-			require.NoError(t, err)
-
-			configs, err := p.GetConfigs()
-			assert.Nil(t, configs)
+			id, err := p.RegisterCronJob(tc.identifier, "* * * * *", tc.job)
+			assert.Empty(t, id)
 			assert.ErrorIs(t, err, tc.want)
 		})
 	}

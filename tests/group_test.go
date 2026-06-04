@@ -22,13 +22,13 @@ func TestGroupMiddleware(t *testing.T) {
 		processedJobs int
 	)
 	groupMiddleware := func(next queue.HandlerFunc) queue.HandlerFunc {
-		return func(ctx context.Context, job *queue.Job) error {
+		return func(ctx context.Context, delivery *queue.Delivery) error {
 			mu.Lock()
 			processedJobs++
 			mu.Unlock()
 
-			t.Logf("Group processing job: %v", job.Type)
-			return next(ctx, job)
+			t.Logf("Group processing delivery: %v", delivery.Type())
+			return next(ctx, delivery)
 		}
 	}
 
@@ -41,18 +41,12 @@ func TestGroupMiddleware(t *testing.T) {
 
 	// Register a dummy job handler within the group
 	jobType := "sendEmail"
-	err = emailGroup.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = emailGroup.Register(jobType, func(context.Context, *queue.Delivery) error {
 		return nil // Simulate successful job processing
 	})
 	require.NoError(t, err, "Failed to register job handler")
 
-	// Start the worker in a goroutine to process jobs.
-	go func() {
-		assert.NoError(t, worker.Start(), "Failed to start worker")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop(), "Failed to stop worker")
-	}() // Ensure worker is stopped after the test.
+	runWorker(t, worker)
 
 	// Allow some time for the worker to initialize.
 	time.Sleep(2 * time.Second)

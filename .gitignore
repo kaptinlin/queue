@@ -61,6 +61,8 @@ TODO*.md
 .plan/*.md
 reports/
 reports/*
+!reports/
+!reports/asynq.md
 plan*.md
 PLAN*.md
 improve*.md

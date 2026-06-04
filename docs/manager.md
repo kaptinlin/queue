@@ -1,148 +1,181 @@
-# Manager for Web UI Development
+# Manager
 
-The `Manager` in the `queue` package gives access to worker, queue, and job data, enabling the creation of web UIs for management and monitoring.
+`Manager` exposes operational inspection and state changes for queues, workers, and jobs. It is intended for dashboards, admin tools, and maintenance jobs.
 
 ## Initialization
 
-To begin, configure the `Manager` with a Redis client and an Asynq inspector instance:
-
 ```go
-package main
+redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+redisOpt := redisConfig.ToAsynqRedisOpt()
 
-import (
-    "github.com/hibiken/asynq"
-    "github.com/kaptinlin/queue"
-    "github.com/redis/go-redis/v9"
-)
+inspector := asynq.NewInspector(redisOpt)
+redisClient := redisOpt.MakeRedisClient().(redis.UniversalClient)
 
-func main() {
-    redisConfig := queue.NewRedisConfig(
-        queue.WithRedisAddress("localhost:6379"),
-        queue.WithRedisDB(0),
-    )
-    asynqRedisOpt := redisConfig.ToAsynqRedisOpt()
-    inspector := asynq.NewInspector(asynqRedisOpt)
-    redisClient := asynqRedisOpt.MakeRedisClient().(redis.UniversalClient)
-
-    manager := queue.NewManager(redisClient, inspector)
+manager, err := queue.NewManager(redisClient, inspector)
+if err != nil {
+	return err
 }
 ```
 
-## Operations
-
-### Listing Workers
-
-List all active workers:
+## Workers and Queues
 
 ```go
 workers, err := manager.ListWorkers()
 if err != nil {
-    fmt.Printf("Error listing workers: %v\n", err)
-    return
+	return err
 }
-for _, worker := range workers {
-    fmt.Printf("Worker ID: %s, Host: %s, Status: %s\n", worker.ID, worker.Host, worker.Status)
-}
-```
 
-### Managing Queues
-
-Retrieve all queues:
-
-```go
-queues, err := manager.ListQueues()
+queueInfo, err := manager.QueueInfo("default")
 if err != nil {
-    fmt.Printf("Error listing queues: %v\n", err)
-    return
+	return err
 }
-for _, queue := range queues {
-    fmt.Printf("Queue Name: %s, Size: %d\n", queue.Queue, queue.Size)
-}
-```
 
-Fetch detailed queue information:
-
-```go
-queueInfo, dailyStats, err := manager.GetQueueInfo("default")
+stats, err := manager.ListQueueStats("default", 7)
 if err != nil {
-    fmt.Printf("Error getting queue info: %v\n", err)
-    return
+	return err
 }
-// Handle queueInfo and dailyStats as required
+
+_ = workers
+_ = queueInfo
+_ = stats
 ```
 
-Pause and resume a queue:
+Queue operations return queue-owned sentinels such as `ErrQueueNotFound` and `ErrQueueNotEmpty`, so callers can branch with `errors.Is`. Redis inspection wraps transport failures with `ErrRedisUnavailable` while preserving the underlying cause.
 
 ```go
-if err := manager.PauseQueue("default"); err != nil {
-    fmt.Printf("Error pausing queue: %v\n", err)
-}
-
-if err := manager.ResumeQueue("default"); err != nil {
-    fmt.Printf("Error resuming queue: %v\n", err)
+if err := manager.DeleteQueue("default", false); err != nil {
+	if errors.Is(err, queue.ErrQueueNotEmpty) {
+		return manager.DeleteQueue("default", true)
+	}
+	return err
 }
 ```
 
-### Job Management
+## Job Snapshots
 
-Listing and managing jobs:
+`JobInfo` and `ActiveJobInfo` are safe inspection snapshots. They include identity, state, timestamps, queue, retry counts, and payload/result presence with byte sizes. They do not include raw payload or result bytes by default.
 
 ```go
-jobs, err := manager.ListJobsByState("default", queue.JobStateActive, 10, 1)
+jobInfo, err := manager.JobInfo("default", jobID)
 if err != nil {
-    fmt.Printf("Error listing jobs: %v\n", err)
-    return
+	return err
+}
+
+fmt.Println(jobInfo.ID, jobInfo.State, jobInfo.HasPayload, jobInfo.PayloadSize)
+```
+
+Retrieve raw payload or result data explicitly when an admin workflow needs it.
+
+```go
+payload, err := manager.JobPayload("default", jobID)
+if err != nil {
+	return err
+}
+
+result, err := manager.JobResult("default", jobID)
+if err != nil {
+	return err
+}
+
+_ = payload
+_ = result
+```
+
+`JobResult` returns `ErrJobResultNotFound` when the job exists but has no retained result.
+
+## Listing Jobs
+
+```go
+jobs, err := manager.ListJobsByState("default", queue.StatePending, 50, 1)
+if err != nil {
+	return err
 }
 
 for _, job := range jobs {
-    fmt.Printf("Job ID: %s, Type: %s\n", job.ID, job.Type)
-    // Run a job immediately
-    if err := manager.RunJob("default", job.ID); err != nil {
-        fmt.Printf("Error running job: %v\n", err)
-    }
-    // Archive a job
-    if err := manager.ArchiveJob("default", job.ID); err != nil {
-        fmt.Printf("Error archiving job: %v\n", err)
-    }
-    // Delete a job
-    if err := manager.DeleteJob("default", job.ID); err != nil {
-        fmt.Printf("Error deleting job: %v\n", err)
-    }
+	fmt.Println(job.ID, job.Type, job.State)
 }
 ```
 
-## Additional Operations
-
-### Deleting a Queue
-
-To delete a queue (force deletion if needed):
+Use `ListActiveJobs` when a UI needs active worker timing fields.
 
 ```go
-if err := manager.DeleteQueue("default", true); err != nil {
-    fmt.Printf("Error deleting queue: %v\n", err)
-}
-```
-
-### Running Batch Jobs
-
-For executing multiple jobs at once:
-
-```go
-successfulIDs, failedIDs, err := manager.BatchRunJobs("default", []string{"jobID1", "jobID2"})
+active, err := manager.ListActiveJobs("default", 50, 1)
 if err != nil {
-    fmt.Printf("Error running batch jobs: %v\n", err)
+	return err
 }
-fmt.Printf("Successful Job IDs: %v\nFailed Job IDs: %v\n", successfulIDs, failedIDs)
+_ = active
 ```
 
-### Cancelling Active Jobs
-
-To cancel active jobs in a queue:
+Aggregating jobs require a group, so list them through the explicit group API.
 
 ```go
-cancelledCount, err := manager.CancelActiveJobs("default", 10, 1)
+aggregating, err := manager.ListAggregatingJobs("default", "tenant-a", 50, 1)
 if err != nil {
-    fmt.Printf("Error cancelling active jobs: %v\n", err)
+	return err
 }
-fmt.Printf("Cancelled %d jobs.\n", cancelledCount)
+_ = aggregating
 ```
+
+## State Operations
+
+Single-job operations return stable queue errors.
+
+```go
+if err := manager.RunJob("default", jobID); err != nil {
+	if errors.Is(err, queue.ErrJobNotFound) {
+		return nil
+	}
+	return err
+}
+```
+
+State-wide operations return the number of affected jobs.
+
+```go
+count, err := manager.ArchiveJobsByState("default", queue.StateRetry)
+if err != nil {
+	return err
+}
+fmt.Println("archived", count)
+```
+
+Active jobs cannot be archived directly; cancel them first.
+
+```go
+cancelled, err := manager.CancelActiveJobs("default", 100, 1)
+if err != nil {
+	return err
+}
+fmt.Println("cancelled", cancelled)
+```
+
+Aggregating jobs require an explicit group identifier.
+
+```go
+count, err := manager.RunAggregatingJobs("default", "tenant-a")
+if err != nil {
+	return err
+}
+_ = count
+```
+
+## Batch Operations
+
+Batch operations return a `BatchJobResult`. The result records successful job IDs and failed job IDs with their individual causes.
+
+```go
+result, err := manager.BatchRunJobs("default", []string{"job-1", "job-2"})
+if err != nil {
+	for _, failure := range result.Failed {
+		if errors.Is(failure.Err, queue.ErrJobNotFound) {
+			fmt.Println("missing job", failure.JobID)
+			continue
+		}
+		return err
+	}
+}
+
+fmt.Println("ran", len(result.Succeeded), "jobs")
+```
+
+The same result shape is used by `BatchArchiveJobs`, `BatchCancelJobs`, and `BatchDeleteJobs`.

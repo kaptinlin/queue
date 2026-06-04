@@ -17,13 +17,13 @@ func NewCustomConfigProvider(db *sql.DB) *CustomConfigProvider {
 }
 
 // RegisterCronJob stores job configurations in the database
-func (c *CustomConfigProvider) RegisterCronJob(spec string, job *Job) (string, error) {
-    _, err := c.db.Exec("INSERT INTO jobs (spec, type, payload) VALUES (?, ?, ?)", 
-        spec, job.Type, job.Payload)
+func (c *CustomConfigProvider) RegisterCronJob(id, spec string, job *queue.Job) (string, error) {
+    _, err := c.db.Exec("INSERT INTO jobs (id, spec, type, payload) VALUES (?, ?, ?, ?)",
+        id, spec, job.Type(), job.PayloadBytes())
     if err != nil {
         return "", err
     }
-    return job.Fingerprint, nil
+    return id, nil
 }
 
 // GetConfigs retrieves job configurations from the database and converts them to asynq.PeriodicTaskConfig
@@ -36,11 +36,23 @@ func (c *CustomConfigProvider) GetConfigs() ([]*asynq.PeriodicTaskConfig, error)
 
     var configs []*asynq.PeriodicTaskConfig
     for rows.Next() {
-        var spec, jobType, payload string
-        if err := rows.Scan(&spec, &jobType, &payload); err != nil {
+        var spec, jobType string
+        var payloadJSON []byte
+        if err := rows.Scan(&spec, &jobType, &payloadJSON); err != nil {
             return nil, err
         }
-        task, opts, _ := NewJob(jobType, payload).ConvertToAsynqTask() // Example conversion
+        var payload map[string]any
+        if err := json.Unmarshal(payloadJSON, &payload); err != nil {
+            return nil, err
+        }
+        job, err := queue.NewJob(jobType, payload)
+        if err != nil {
+            return nil, err
+        }
+        task, opts, err := job.ConvertToAsynqTask()
+        if err != nil {
+            return nil, err
+        }
         configs = append(configs, &asynq.PeriodicTaskConfig{
             Cronspec: spec,
             Task:     task,

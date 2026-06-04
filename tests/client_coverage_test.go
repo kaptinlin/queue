@@ -19,7 +19,7 @@ func TestWithClientLogger(t *testing.T) {
 	)
 	require.NoError(t, err)
 	assert.NotNil(t, client)
-	assert.NoError(t, client.Stop())
+	assert.NoError(t, client.Close())
 }
 
 // --- NewClient validation ---
@@ -42,7 +42,7 @@ func TestClientEnqueueJob_WithClientRetention(t *testing.T) {
 		queue.WithClientRetention(1),
 	)
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
 	id, err := client.Enqueue("retention_test",
 		map[string]string{"k": "v"})
@@ -65,9 +65,9 @@ func TestClientEnqueueJob_ReportsRedisFailure(t *testing.T) {
 		queue.WithClientErrorHandler(handler),
 	)
 	require.NoError(t, err)
-	defer func() { assert.NoError(t, client.Stop()) }()
+	defer func() { assert.NoError(t, client.Close()) }()
 
-	job := queue.NewJob("enqueue_failure_test", map[string]string{"k": "v"})
+	job := newJob(t, "enqueue_failure_test", map[string]string{"k": "v"})
 	id, err := client.EnqueueJob(job)
 
 	assert.Empty(t, id)

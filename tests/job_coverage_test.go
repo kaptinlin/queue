@@ -14,47 +14,45 @@ import (
 	"github.com/kaptinlin/queue"
 )
 
-// --- Job.WithOptions ---
+// --- Job options snapshot ---
 
-func TestJobWithOptions(t *testing.T) {
+func TestJobOptionsSnapshot(t *testing.T) {
 	t.Parallel()
 
-	job := queue.NewJob("test", map[string]string{"k": "v"})
-	originalFingerprint := job.Fingerprint
-	assert.Equal(t, queue.DefaultQueue, job.Options.Queue)
-
-	job.WithOptions(
+	job := newJob(t, "test", map[string]string{"k": "v"},
 		queue.WithQueue("critical"),
 		queue.WithMaxRetries(5),
 	)
-	assert.Equal(t, "critical", job.Options.Queue)
-	assert.Equal(t, 5, job.Options.MaxRetries)
-	assert.Equal(t, originalFingerprint, job.Fingerprint)
+	options := job.Options()
+	options.Queue = "mutated"
+
+	assert.Equal(t, "critical", job.Options().Queue)
+	assert.Equal(t, 5, job.Options().MaxRetries)
 }
 
-// --- ConvertToAsynqTask edge cases ---
+// --- NewJob edge cases ---
 
-func TestConvertToAsynqTask_EmptyType(t *testing.T) {
+func TestNewJob_EmptyType(t *testing.T) {
 	t.Parallel()
 
-	job := queue.NewJob("", nil)
-	_, _, err := job.ConvertToAsynqTask()
+	job, err := queue.NewJob("", nil)
+	assert.Nil(t, job)
 	assert.ErrorIs(t, err, queue.ErrNoJobTypeSpecified)
 }
 
-func TestConvertToAsynqTask_EmptyQueue(t *testing.T) {
+func TestNewJob_EmptyQueue(t *testing.T) {
 	t.Parallel()
 
-	job := queue.NewJob("test", nil, queue.WithQueue(""))
-	_, _, err := job.ConvertToAsynqTask()
+	job, err := queue.NewJob("test", nil, queue.WithQueue(""))
+	assert.Nil(t, job)
 	assert.ErrorIs(t, err, queue.ErrNoJobQueueSpecified)
 }
 
-func TestConvertToAsynqTask_SerializationFailure(t *testing.T) {
+func TestNewJob_SerializationFailure(t *testing.T) {
 	t.Parallel()
 
-	job := queue.NewJob("test", func() {})
-	_, _, err := job.ConvertToAsynqTask()
+	job, err := queue.NewJob("test", func() {})
+	assert.Nil(t, job)
 	assert.ErrorIs(t, err, queue.ErrSerializationFailure)
 }
 
@@ -65,7 +63,7 @@ func TestConvertToAsynqOptions_AllOptions(t *testing.T) {
 
 	now := time.Now()
 	deadline := now.Add(time.Hour)
-	job := queue.NewJob("test", nil,
+	job := newJob(t, "test", nil,
 		queue.WithQueue("q"),
 		queue.WithDelay(5*time.Second),
 		queue.WithScheduleAt(&now),
@@ -82,17 +80,9 @@ func TestConvertToAsynqOptions_AllOptions(t *testing.T) {
 func TestWriteResult_NoWriter(t *testing.T) {
 	t.Parallel()
 
-	job := queue.NewJob("test", nil)
-	err := job.WriteResult("result")
+	var delivery *queue.Delivery
+	err := delivery.WriteResult("result")
 	assert.ErrorIs(t, err, queue.ErrResultWriterNotSet)
-}
-
-func TestWriteResult_SerializationFailure(t *testing.T) {
-	t.Parallel()
-
-	job := queue.NewJob("test", nil).SetResultWriter(&asynq.ResultWriter{})
-	err := job.WriteResult(func() {})
-	assert.ErrorIs(t, err, queue.ErrSerializationFailure)
 }
 
 func TestWriteResult_WriterFailure(t *testing.T) {
@@ -109,19 +99,29 @@ func TestWriteResult_WriterFailure(t *testing.T) {
 	var once sync.Once
 	started := make(chan struct{})
 	errorsCh := make(chan error, 1)
-	err = worker.Register("write_result_failure", func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register("write_result_failure", func(ctx context.Context, delivery *queue.Delivery) error {
 		once.Do(func() { close(started) })
 		<-ctx.Done()
-		err := job.WriteResult("result")
+		err := delivery.WriteResult("result")
 		errorsCh <- err
 		return err
 	}, queue.WithJobQueue("write_result_failure"))
 	require.NoError(t, err)
 
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
 	go func() {
-		assert.NoError(t, worker.Start())
+		done <- worker.Run(ctx)
 	}()
-	defer func() { assert.NoError(t, worker.Stop()) }()
+	defer func() {
+		cancel()
+		select {
+		case err := <-done:
+			assert.NoError(t, err)
+		case <-time.After(2 * time.Second):
+			t.Error("timed out waiting for worker shutdown")
+		}
+	}()
 
 	task := asynq.NewTask("write_result_failure", []byte(`{}`))
 	_, err = client.Enqueue(task,
@@ -134,6 +134,7 @@ func TestWriteResult_WriterFailure(t *testing.T) {
 
 	select {
 	case <-started:
+		cancel()
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for worker to start result writer test")
 	}
@@ -146,28 +147,28 @@ func TestWriteResult_WriterFailure(t *testing.T) {
 	}
 }
 
-// --- Fingerprint stability ---
+// --- ContentDigest stability ---
 
-func TestJobFingerprint_Stable(t *testing.T) {
+func TestJobContentDigest_Stable(t *testing.T) {
 	t.Parallel()
 
-	j1 := queue.NewJob("t", map[string]string{"k": "v"})
-	j2 := queue.NewJob("t", map[string]string{"k": "v"})
-	assert.Equal(t, j1.Fingerprint, j2.Fingerprint)
+	j1 := newJob(t, "t", map[string]string{"k": "v"})
+	j2 := newJob(t, "t", map[string]string{"k": "v"})
+	assert.Equal(t, j1.ContentDigest(), j2.ContentDigest())
 }
 
-func TestJobFingerprint_DiffersWithOptions(t *testing.T) {
+func TestJobContentDigest_IgnoresOptions(t *testing.T) {
 	t.Parallel()
 
-	j1 := queue.NewJob("t", nil)
-	j2 := queue.NewJob("t", nil, queue.WithMaxRetries(5))
-	assert.NotEqual(t, j1.Fingerprint, j2.Fingerprint)
+	j1 := newJob(t, "t", nil)
+	j2 := newJob(t, "t", nil, queue.WithMaxRetries(5))
+	assert.Equal(t, j1.ContentDigest(), j2.ContentDigest())
 }
 
 func TestDecodePayload_InvalidDestination(t *testing.T) {
 	t.Parallel()
 
-	job := queue.NewJob("test", map[string]string{"k": "v"})
+	job := newJob(t, "test", map[string]string{"k": "v"})
 	err := job.DecodePayload(nil)
 	require.Error(t, err)
 	assert.False(t, errors.Is(err, queue.ErrSerializationFailure))
@@ -176,7 +177,7 @@ func TestDecodePayload_InvalidDestination(t *testing.T) {
 func TestDecodePayload_SerializationFailure(t *testing.T) {
 	t.Parallel()
 
-	job := queue.NewJob("test", func() {})
-	err := job.DecodePayload(new(map[string]string))
+	job, err := queue.NewJob("test", func() {})
+	assert.Nil(t, job)
 	assert.ErrorIs(t, err, queue.ErrSerializationFailure)
 }

@@ -12,44 +12,39 @@ import (
 	"github.com/kaptinlin/queue"
 )
 
-// --- Handler.WithOptions ---
+// --- NewHandler options ---
 
-func TestHandlerWithOptions(t *testing.T) {
-	handler := queue.NewHandler("test",
-		func(_ context.Context, _ *queue.Job) error {
+func TestNewHandlerWithOptions(t *testing.T) {
+	handler := newHandler(t, "test",
+		func(_ context.Context, _ *queue.Delivery) error {
 			return nil
 		},
-	)
-	assert.Equal(t, queue.DefaultQueue, handler.JobQueue)
-
-	handler.WithOptions(
 		queue.WithJobQueue("critical"),
 		queue.WithJobTimeout(5*time.Second),
 	)
-	assert.Equal(t, "critical", handler.JobQueue)
-	assert.Equal(t, 5*time.Second, handler.JobTimeout)
+	assert.Equal(t, "critical", handler.Queue())
+	assert.Equal(t, 5*time.Second, handler.Timeout())
 }
 
-// --- Handler.Use ---
+// --- Handler middleware option ---
 
-func TestHandlerUse(t *testing.T) {
+func TestHandlerWithSingleMiddleware(t *testing.T) {
 	called := false
 	mw := func(next queue.HandlerFunc) queue.HandlerFunc {
-		return func(ctx context.Context, job *queue.Job) error {
+		return func(ctx context.Context, delivery *queue.Delivery) error {
 			called = true
-			return next(ctx, job)
+			return next(ctx, delivery)
 		}
 	}
 
-	handler := queue.NewHandler("test",
-		func(_ context.Context, _ *queue.Job) error {
+	handler := newHandler(t, "test",
+		func(_ context.Context, _ *queue.Delivery) error {
 			return nil
 		},
+		queue.WithMiddleware(mw),
 	)
-	handler.Use(mw)
 
-	job := &queue.Job{Type: "test", Payload: "data"}
-	err := handler.Process(context.Background(), job)
+	err := handler.Process(context.Background(), nil)
 	require.NoError(t, err)
 	assert.True(t, called)
 }
@@ -59,21 +54,20 @@ func TestHandlerUse(t *testing.T) {
 func TestHandlerWithMiddlewareOption(t *testing.T) {
 	called := false
 	mw := func(next queue.HandlerFunc) queue.HandlerFunc {
-		return func(ctx context.Context, job *queue.Job) error {
+		return func(ctx context.Context, delivery *queue.Delivery) error {
 			called = true
-			return next(ctx, job)
+			return next(ctx, delivery)
 		}
 	}
 
-	handler := queue.NewHandler("test",
-		func(_ context.Context, _ *queue.Job) error {
+	handler := newHandler(t, "test",
+		func(_ context.Context, _ *queue.Delivery) error {
 			return nil
 		},
 		queue.WithMiddleware(mw),
 	)
 
-	job := &queue.Job{Type: "test", Payload: "data"}
-	err := handler.Process(context.Background(), job)
+	err := handler.Process(context.Background(), nil)
 	require.NoError(t, err)
 	assert.True(t, called)
 }
@@ -84,24 +78,24 @@ func TestHandlerMiddlewareOrder(t *testing.T) {
 	calls := make([]string, 0, 5)
 	middleware := func(name string) queue.MiddlewareFunc {
 		return func(next queue.HandlerFunc) queue.HandlerFunc {
-			return func(ctx context.Context, job *queue.Job) error {
+			return func(ctx context.Context, delivery *queue.Delivery) error {
 				calls = append(calls, name+":before")
-				err := next(ctx, job)
+				err := next(ctx, delivery)
 				calls = append(calls, name+":after")
 				return err
 			}
 		}
 	}
 
-	handler := queue.NewHandler("test",
-		func(_ context.Context, _ *queue.Job) error {
+	handler := newHandler(t, "test",
+		func(_ context.Context, _ *queue.Delivery) error {
 			calls = append(calls, "handler")
 			return nil
 		},
 		queue.WithMiddleware(middleware("first"), middleware("second")),
 	)
 
-	err := handler.Process(context.Background(), queue.NewJob("test", nil))
+	err := handler.Process(context.Background(), nil)
 	require.NoError(t, err)
 
 	want := []string{

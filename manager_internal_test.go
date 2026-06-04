@@ -1,11 +1,15 @@
 package queue
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/hibiken/asynq"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseRedisInfo(t *testing.T) {
@@ -20,24 +24,68 @@ func TestParseRedisInfo_Empty(t *testing.T) {
 	assert.Empty(t, info)
 }
 
-func TestHandleQueueError_AsynqQueueNotFound(t *testing.T) {
-	assert.ErrorIs(t, handleQueueError(asynq.ErrQueueNotFound), ErrQueueNotFound)
+func TestMapManagerError_Nil(t *testing.T) {
+	assert.NoError(t, mapManagerError(nil))
 }
 
-func TestHandleQueueError_StringQueueNotFound(t *testing.T) {
-	//nolint:err113 // Test the string-based queue-not-found matcher.
-	err := errors.New("queue does not exist")
-	assert.ErrorIs(t, handleQueueError(err), ErrQueueNotFound)
+func TestMapManagerError_AsynqQueueNotFound(t *testing.T) {
+	err := fmt.Errorf("inspector: %w", asynq.ErrQueueNotFound)
+	assert.ErrorIs(t, mapManagerError(err), ErrQueueNotFound)
 }
 
-func TestIsQueueNotFoundError_True(t *testing.T) {
-	//nolint:err113 // Test the string-based queue-not-found matcher.
-	err := errors.New("queue does not exist")
-	assert.True(t, isQueueNotFoundError(err))
+func TestMapManagerError_AsynqTaskNotFound(t *testing.T) {
+	err := fmt.Errorf("inspector: %w", asynq.ErrTaskNotFound)
+	assert.ErrorIs(t, mapManagerError(err), ErrJobNotFound)
 }
 
-func TestIsQueueNotFoundError_False(t *testing.T) {
+func TestMapManagerError_AsynqQueueNotEmpty(t *testing.T) {
+	err := fmt.Errorf("inspector: %w", asynq.ErrQueueNotEmpty)
+	assert.ErrorIs(t, mapManagerError(err), ErrQueueNotEmpty)
+}
+
+func TestMapManagerError_Other(t *testing.T) {
 	//nolint:err113 // Test the negative case with a one-off error value.
 	err := errors.New("some other error")
-	assert.False(t, isQueueNotFoundError(err))
+	assert.ErrorIs(t, mapManagerError(err), err)
+}
+
+func TestMapRedisInfoError_Nil(t *testing.T) {
+	assert.NoError(t, mapRedisInfoError(nil))
+}
+
+func TestMapRedisInfoError_Context(t *testing.T) {
+	err := fmt.Errorf("redis info: %w", context.Canceled)
+	assert.ErrorIs(t, mapRedisInfoError(err), context.Canceled)
+	assert.NotErrorIs(t, mapRedisInfoError(err), ErrRedisUnavailable)
+}
+
+func TestMapRedisInfoError_PreservesManagerSentinel(t *testing.T) {
+	err := fmt.Errorf("queue location: %w", ErrQueueNotFound)
+	assert.ErrorIs(t, mapRedisInfoError(err), ErrQueueNotFound)
+	assert.NotErrorIs(t, mapRedisInfoError(err), ErrRedisUnavailable)
+}
+
+func TestMapRedisInfoError_WrapsUnavailable(t *testing.T) {
+	//nolint:err113 // Test the boundary behavior with a representative driver error.
+	err := errors.New("connection refused")
+	got := mapRedisInfoError(err)
+
+	assert.ErrorIs(t, got, ErrRedisUnavailable)
+	assert.ErrorIs(t, got, err)
+}
+
+func TestRedisInfo_NilContext(t *testing.T) {
+	redisOpt := DefaultRedisConfig().ToAsynqRedisOpt()
+	inspector := asynq.NewInspector(redisOpt)
+	client := redisOpt.MakeRedisClient().(redis.UniversalClient)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close())
+	})
+	manager, err := NewManager(client, inspector)
+	require.NoError(t, err)
+
+	info, err := manager.RedisInfo(nil) //nolint:staticcheck // Exercise nil context validation.
+
+	assert.Nil(t, info)
+	assert.ErrorIs(t, err, ErrInvalidContext)
 }

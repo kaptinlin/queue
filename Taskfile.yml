@@ -42,6 +42,7 @@ tasks:
       - echo "  redis          - Start Redis service"
       - echo "  redis-stop     - Stop Redis service"
       - echo "  lint           - Run linter"
+      - echo "  vet            - Run go vet"
       - echo "  clean          - Remove binary files"
     silent: true
 
@@ -67,6 +68,11 @@ tasks:
     desc: Run tests (requires Redis to be running)
     cmds:
       - cd tests && go test -v -race
+
+  vet:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
 
   redis:
     desc: Start Redis service

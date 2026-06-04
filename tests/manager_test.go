@@ -58,6 +58,9 @@ func setupTestManager() *queue.Manager {
 	inspector := asynq.NewInspector(asynqRedisOpt)
 	redisClient := asynqRedisOpt.MakeRedisClient().(redis.UniversalClient)
 
-	manager := queue.NewManager(redisClient, inspector)
+	manager, err := queue.NewManager(redisClient, inspector)
+	if err != nil {
+		panic(err)
+	}
 	return manager
 }

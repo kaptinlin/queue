@@ -45,7 +45,7 @@ func TestManagerRunJobsByState_Scheduled(t *testing.T) {
 	future := time.Now().Add(24 * time.Hour)
 	client, _ := enqueueStateOpsJobs(t, 2,
 		queue.WithScheduleAt(&future))
-	defer func() { _ = client.Stop() }()
+	defer func() { _ = client.Close() }()
 
 	count, err := manager.RunJobsByState(stateOpsTestQueue,
 		queue.StateScheduled)
@@ -84,7 +84,7 @@ func TestManagerArchiveJobsByState_Pending(t *testing.T) {
 	defer cleanupStateOpsQueue(t, manager)
 
 	client, _ := enqueueStateOpsJobs(t, 2)
-	defer func() { _ = client.Stop() }()
+	defer func() { _ = client.Close() }()
 
 	count, err := manager.ArchiveJobsByState(stateOpsTestQueue,
 		queue.StatePending)
@@ -124,7 +124,7 @@ func TestManagerDeleteJobsByState_Pending(t *testing.T) {
 	defer cleanupStateOpsQueue(t, manager)
 
 	client, _ := enqueueStateOpsJobs(t, 2)
-	defer func() { _ = client.Stop() }()
+	defer func() { _ = client.Close() }()
 
 	count, err := manager.DeleteJobsByState(stateOpsTestQueue,
 		queue.StatePending)
@@ -148,6 +148,15 @@ func TestManagerDeleteJobsByState_Active(t *testing.T) {
 	assert.ErrorIs(t, err, queue.ErrOperationNotSupported)
 }
 
+func TestManagerDeleteJobsByState_Aggregating(t *testing.T) {
+	manager := setupTestManager()
+
+	_, err := manager.DeleteJobsByState(stateOpsTestQueue,
+		queue.StateAggregating)
+	assert.ErrorIs(t, err,
+		queue.ErrGroupRequiredForAggregation)
+}
+
 // --- ListQueues with verification ---
 
 func TestManagerListQueues_ContainsTestQueue(t *testing.T) {
@@ -155,7 +164,7 @@ func TestManagerListQueues_ContainsTestQueue(t *testing.T) {
 	defer cleanupStateOpsQueue(t, manager)
 
 	client, _ := enqueueStateOpsJobs(t, 1)
-	defer func() { _ = client.Stop() }()
+	defer func() { _ = client.Close() }()
 
 	queues, err := manager.ListQueues()
 	require.NoError(t, err)

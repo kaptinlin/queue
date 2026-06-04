@@ -16,8 +16,8 @@ type Client struct {
 	logger       Logger
 }
 
-// ClientConfig defines the configuration options for the Client.
-type ClientConfig struct {
+// clientConfig defines the configuration options for the Client.
+type clientConfig struct {
 	ErrorHandler ClientErrorHandler // Custom handler for enqueue errors.
 	Retention    time.Duration      // Default retention duration for jobs.
 	Logger       Logger
@@ -39,13 +39,16 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 
 	asynqClient := asynq.NewClient(redisConfig.ToAsynqRedisOpt())
 
-	config := &ClientConfig{
+	config := &clientConfig{
 		Logger:    NewDefaultLogger(),
 		Retention: 0,
 	}
 
 	for _, opt := range opts {
-		opt(config)
+		opt.applyClientOption(config)
+	}
+	if config.Logger == nil {
+		config.Logger = NewDefaultLogger()
 	}
 
 	return &Client{
@@ -56,33 +59,45 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 	}, nil
 }
 
-// ClientOption defines a function signature for configuring the Client.
-type ClientOption func(*ClientConfig)
+// ClientOption configures a Client.
+type ClientOption interface {
+	applyClientOption(*clientConfig)
+}
+
+type clientOption func(*clientConfig)
+
+func (f clientOption) applyClientOption(config *clientConfig) {
+	f(config)
+}
 
 // WithClientLogger sets a custom logger for the client.
 func WithClientLogger(logger Logger) ClientOption {
-	return func(c *ClientConfig) {
+	return clientOption(func(c *clientConfig) {
 		c.Logger = logger
-	}
+	})
 }
 
 // WithClientErrorHandler sets a custom error handler for the client.
 func WithClientErrorHandler(handler ClientErrorHandler) ClientOption {
-	return func(c *ClientConfig) {
+	return clientOption(func(c *clientConfig) {
 		c.ErrorHandler = handler
-	}
+	})
 }
 
 // WithClientRetention sets a default retention duration for jobs.
 func WithClientRetention(retention time.Duration) ClientOption {
-	return func(c *ClientConfig) {
+	return clientOption(func(c *clientConfig) {
 		c.Retention = retention
-	}
+	})
 }
 
 // Enqueue wraps the process of creating a job and enqueueing it with the Asynq client.
 func (c *Client) Enqueue(jobType string, payload any, opts ...JobOption) (string, error) {
-	job := NewJob(jobType, payload, opts...)
+	job, err := NewJob(jobType, payload, opts...)
+	if err != nil {
+		c.handleJobError(err, nil, "failed to create job")
+		return "", err
+	}
 	return c.EnqueueJob(job)
 }
 
@@ -94,7 +109,7 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 		return "", err
 	}
 
-	retention := job.Options.Retention
+	retention := job.Options().Retention
 	if retention <= 0 {
 		retention = c.retention
 	}
@@ -113,15 +128,21 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 
 // handleJobError logs the error and calls the custom error handler if one is registered.
 func (c *Client) handleJobError(err error, job *Job, msg string) {
-	c.logger.Error(fmt.Sprintf("%s: %v, job_id=%s, job_type=%s, fingerprint=%s",
-		msg, err, job.ID, job.Type, job.Fingerprint))
+	fields := []any{"error", err}
+	if job != nil {
+		fields = append(fields,
+			"job_type", job.Type(),
+			"content_digest", job.ContentDigest(),
+		)
+	}
+	c.logger.Error(append([]any{msg}, fields...)...)
 
 	if c.errorHandler != nil {
 		c.errorHandler.HandleError(err, job)
 	}
 }
 
-// Stop terminates the client connection, releasing resources.
-func (c *Client) Stop() error {
+// Close closes the client connection and releases resources.
+func (c *Client) Close() error {
 	return c.asynqClient.Close()
 }

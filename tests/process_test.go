@@ -26,12 +26,12 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err, "Failed to create client")
 	defer func() {
-		assert.NoError(t, client.Stop(), "Failed to stop client")
+		assert.NoError(t, client.Close(), "Failed to close client")
 	}()
 
 	// Define the job payload and enqueue a new job.
 	payload := TestJobPayload{Message: "Hello, Test Queue!"}
-	job := queue.NewJob(testJobType, payload)
+	job := newJob(t, testJobType, payload)
 
 	// Initialize the worker responsible for processing jobs.
 	worker, err := queue.NewWorker(redisConfig)
@@ -41,11 +41,11 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 	var wg sync.WaitGroup
 
 	// Define and register the job handler.
-	testJobHandler := func(ctx context.Context, job *queue.Job) error {
+	testJobHandler := func(ctx context.Context, delivery *queue.Delivery) error {
 		defer wg.Done() // Signal that the job has been processed.
 
 		var payload TestJobPayload
-		if err := job.DecodePayload(&payload); err != nil {
+		if err := delivery.DecodePayload(&payload); err != nil {
 			return err
 		}
 
@@ -59,13 +59,7 @@ func TestEnqueueAndProcessJobWithVerification(t *testing.T) {
 	err = worker.Register(testJobType, testJobHandler)
 	require.NoError(t, err, "Failed to register job handler")
 
-	// Start the worker in a separate goroutine to process jobs.
-	go func() {
-		assert.NoError(t, worker.Start(), "Worker failed to start")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop(), "Failed to stop worker")
-	}() // Ensure the worker is stopped after the test.
+	runWorker(t, worker)
 
 	// Enqueue the job after worker is ready
 	wg.Add(1) // Expecting one job to be processed

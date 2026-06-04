@@ -31,8 +31,11 @@ func (g *Group) Register(jobType string, handle HandlerFunc, opts ...HandlerOpti
 
 // RegisterHandler registers a handler for a specific job type within this group.
 func (g *Group) RegisterHandler(handler *Handler) error {
-	if len(g.middlewares) > 0 {
-		handler.Use(g.middlewares...)
+	if handler != nil && len(g.middlewares) > 0 {
+		clone := *handler
+		clone.middlewares = slices.Concat(g.middlewares, handler.middlewares)
+		clone.composeMiddleware()
+		handler = &clone
 	}
 
 	return g.worker.RegisterHandler(handler)

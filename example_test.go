@@ -9,30 +9,39 @@ import (
 )
 
 func ExampleNewJob() {
-	job := queue.NewJob("email:send", map[string]string{
+	job, err := queue.NewJob("email:send", map[string]string{
 		"to":      "user@example.com",
 		"subject": "Welcome",
 	})
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
 
-	fmt.Println(job.Type)
-	fmt.Println(job.Options.Queue)
+	fmt.Println(job.Type())
+	fmt.Println(job.Options().Queue)
 	// Output:
 	// email:send
 	// default
 }
 
 func ExampleNewJob_withOptions() {
-	job := queue.NewJob("email:send", map[string]string{
+	job, err := queue.NewJob("email:send", map[string]string{
 		"to": "user@example.com",
 	},
 		queue.WithQueue("critical"),
 		queue.WithMaxRetries(3),
 		queue.WithDelay(5*time.Second),
 	)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+	options := job.Options()
 
-	fmt.Println(job.Type)
-	fmt.Println(job.Options.Queue)
-	fmt.Println(job.Options.MaxRetries)
+	fmt.Println(job.Type())
+	fmt.Println(options.Queue)
+	fmt.Println(options.MaxRetries)
 	// Output:
 	// email:send
 	// critical
@@ -45,10 +54,14 @@ func ExampleJob_DecodePayload() {
 		Subject string `json:"subject"`
 	}
 
-	job := queue.NewJob("email:send", map[string]string{
+	job, err := queue.NewJob("email:send", map[string]string{
 		"to":      "user@example.com",
 		"subject": "Welcome",
 	})
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
 
 	var payload EmailPayload
 	if err := job.DecodePayload(&payload); err != nil {
@@ -90,17 +103,21 @@ func ExampleDefaultRedisConfig() {
 }
 
 func ExampleNewHandler() {
-	handler := queue.NewHandler("email:send",
-		func(ctx context.Context, job *queue.Job) error {
-			fmt.Println("processing:", job.Type)
+	handler, err := queue.NewHandler("email:send",
+		func(ctx context.Context, delivery *queue.Delivery) error {
+			fmt.Println("processing:", delivery.Type())
 			return nil
 		},
 		queue.WithJobQueue("critical"),
 		queue.WithJobTimeout(30*time.Second),
 	)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
-	fmt.Println(handler.JobType)
-	fmt.Println(handler.JobQueue)
+	fmt.Println(handler.Type())
+	fmt.Println(handler.Queue())
 	// Output:
 	// email:send
 	// critical
@@ -131,17 +148,21 @@ func ExampleNewSkipRetryError() {
 
 	fmt.Println(err)
 	// Output:
-	// skip retry due to: invalid payload format: skip retry for the task
+	// skip retry due to: invalid payload format: skip retry
 }
 
 func ExampleNewMemoryConfigProvider() {
 	provider := queue.NewMemoryConfigProvider()
 
-	job := queue.NewJob("report:generate", nil,
+	job, err := queue.NewJob("report:generate", nil,
 		queue.WithQueue("reports"),
 	)
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
 
-	id, err := provider.RegisterCronJob("0 * * * *", job)
+	id, err := provider.RegisterCronJob("hourly-report", "0 * * * *", job)
 	if err != nil {
 		fmt.Println("error:", err)
 		return

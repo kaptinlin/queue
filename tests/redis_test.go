@@ -75,6 +75,33 @@ func TestRedisConfigValidate(t *testing.T) {
 				Addr:    "/tmp/redis.sock",
 			},
 		},
+		{
+			name: "Negative DB",
+			config: queue.RedisConfig{
+				Network: "tcp",
+				Addr:    "localhost:6379",
+				DB:      -1,
+			},
+			wantErr: queue.ErrRedisInvalidDB,
+		},
+		{
+			name: "Negative pool size",
+			config: queue.RedisConfig{
+				Network:  "tcp",
+				Addr:     "localhost:6379",
+				PoolSize: -1,
+			},
+			wantErr: queue.ErrRedisInvalidPoolSize,
+		},
+		{
+			name: "Negative timeout",
+			config: queue.RedisConfig{
+				Network:     "tcp",
+				Addr:        "localhost:6379",
+				DialTimeout: -time.Second,
+			},
+			wantErr: queue.ErrRedisInvalidTimeout,
+		},
 	}
 
 	for _, tt := range tests {
@@ -145,7 +172,9 @@ func TestRedisConfigToAsynqRedisOpt(t *testing.T) {
 	if diff := cmp.Diff(want, gotSnapshot); diff != "" {
 		t.Errorf("asynq redis option mismatch (-want +got):\n%s", diff)
 	}
-	assert.Same(t, tlsConfig, got.TLSConfig)
+	assert.NotNil(t, got.TLSConfig)
+	assert.NotSame(t, tlsConfig, got.TLSConfig)
+	assert.Equal(t, uint16(tls.VersionTLS12), got.TLSConfig.MinVersion)
 }
 
 func TestRedisConfigOptions(t *testing.T) {
@@ -214,10 +243,8 @@ func TestRedisConfigOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Apply option to a fresh configuration based on default settings
-			config := queue.NewRedisConfig()
-			tt.option(config)
-			tt.validate(t, config) // Use a validation function to check the result
+			config := queue.NewRedisConfig(tt.option)
+			tt.validate(t, config)
 		})
 	}
 }

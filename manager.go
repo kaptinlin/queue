@@ -3,62 +3,201 @@ package queue
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/hibiken/asynq"
 	"github.com/redis/go-redis/v9"
 )
 
-// ManagerInterface defines operations for managing and retrieving information about workers and their jobs.
-type ManagerInterface interface {
-	ListWorkers() ([]*WorkerInfo, error)
-	WorkerInfo(workerID string) (*WorkerInfo, error)
-	ListQueues() ([]*QueueInfo, error)
-	QueueInfo(queueName string) (*QueueInfo, error)
-	ListQueueStats(queueName string, days int) ([]*QueueDailyStats, error)
-	DeleteQueue(queueName string, force bool) error
-	PauseQueue(queueName string) error
-	ResumeQueue(queueName string) error
-	ListJobsByState(queue string, state JobState, size, page int) ([]*JobInfo, error)
-	ListActiveJobs(queue string, size, page int) ([]*JobInfo, error)
-	JobInfo(queue, jobID string) (*JobInfo, error)
-	RunJob(queue, jobID string) error
-	RunJobsByState(queue string, state JobState) (int, error)
-	BatchRunJobs(queue string, jobIDs []string) ([]string, []string, error)
-	ArchiveJob(queue, jobID string) error
-	ArchiveJobsByState(queue string, state JobState) (int, error)
-	BatchArchiveJobs(queue string, jobIDs []string) ([]string, []string, error)
-	CancelJob(jobID string) error
-	CancelActiveJobs(queue string, size, page int) (int, error)
-	BatchCancelJobs(jobIDs []string) ([]string, []string, error)
-	DeleteJob(queue, jobID string) error
-	DeleteJobsByState(queue string, state JobState) (int, error)
-	BatchDeleteJobs(queue string, jobIDs []string) ([]string, []string, error)
-	RunAggregatingJobs(queue, group string) (int, error)
-	ArchiveAggregatingJobs(queue, group string) (int, error)
-	DeleteAggregatingJobs(queue, group string) (int, error)
-	RedisInfo(ctx context.Context) (*RedisInfo, error)
-}
-
-// Manager provides an implementation for the ManagerInterface.
+// Manager provides operational inspection and management APIs for queues and jobs.
 type Manager struct {
 	client    redis.UniversalClient
 	inspector *asynq.Inspector
 }
 
-// NewManager creates a new instance of Manager.
-func NewManager(client redis.UniversalClient, inspector *asynq.Inspector) *Manager {
+// NewManager creates a Manager for operational inspection and state changes.
+func NewManager(client redis.UniversalClient, inspector *asynq.Inspector) (*Manager, error) {
+	if client == nil {
+		return nil, ErrInvalidManagerClient
+	}
+	if inspector == nil {
+		return nil, ErrInvalidManagerInspector
+	}
 	return &Manager{
 		client:    client,
 		inspector: inspector,
+	}, nil
+}
+
+// BatchJobError records one failed item from a batch job operation.
+type BatchJobError struct {
+	JobID string `json:"job_id"`
+	Err   error  `json:"-"`
+}
+
+// Error implements the error interface.
+func (e BatchJobError) Error() string {
+	return "job " + e.JobID + ": " + e.Err.Error()
+}
+
+// Unwrap returns the underlying cause.
+func (e BatchJobError) Unwrap() error {
+	return e.Err
+}
+
+// BatchJobResult records the successful and failed items from a batch job operation.
+type BatchJobResult struct {
+	Succeeded []string        `json:"succeeded"`
+	Failed    []BatchJobError `json:"failed"`
+}
+
+// Err returns all per-job failures joined into one error.
+func (r BatchJobResult) Err() error {
+	if len(r.Failed) == 0 {
+		return nil
 	}
+
+	errs := make([]error, len(r.Failed))
+	for i, failure := range r.Failed {
+		errs[i] = failure
+	}
+	return errors.Join(errs...)
+}
+
+type managerTaskListFunc func(*asynq.Inspector, string, int, int) ([]*asynq.TaskInfo, error)
+type managerTaskCountFunc func(*asynq.Inspector, string) (int, error)
+
+type managerStateRule struct {
+	list       managerTaskListFunc
+	run        managerTaskCountFunc
+	archive    managerTaskCountFunc
+	delete     managerTaskCountFunc
+	listErr    error
+	runErr     error
+	archiveErr error
+	deleteErr  error
+}
+
+var managerStateRules = map[JobState]managerStateRule{
+	StatePending: {
+		list: func(inspector *asynq.Inspector, queue string, size, page int) ([]*asynq.TaskInfo, error) {
+			return inspector.ListPendingTasks(queue, managerPageOptions(size, page)...)
+		},
+		runErr: ErrOperationNotSupported,
+		archive: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.ArchiveAllPendingTasks(queue)
+		},
+		delete: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.DeleteAllPendingTasks(queue)
+		},
+	},
+	StateScheduled: {
+		list: func(inspector *asynq.Inspector, queue string, size, page int) ([]*asynq.TaskInfo, error) {
+			return inspector.ListScheduledTasks(queue, managerPageOptions(size, page)...)
+		},
+		run: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.RunAllScheduledTasks(queue)
+		},
+		archive: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.ArchiveAllScheduledTasks(queue)
+		},
+		delete: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.DeleteAllScheduledTasks(queue)
+		},
+	},
+	StateRetry: {
+		list: func(inspector *asynq.Inspector, queue string, size, page int) ([]*asynq.TaskInfo, error) {
+			return inspector.ListRetryTasks(queue, managerPageOptions(size, page)...)
+		},
+		run: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.RunAllRetryTasks(queue)
+		},
+		archive: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.ArchiveAllRetryTasks(queue)
+		},
+		delete: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.DeleteAllRetryTasks(queue)
+		},
+	},
+	StateArchived: {
+		list: func(inspector *asynq.Inspector, queue string, size, page int) ([]*asynq.TaskInfo, error) {
+			return inspector.ListArchivedTasks(queue, managerPageOptions(size, page)...)
+		},
+		run: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.RunAllArchivedTasks(queue)
+		},
+		archiveErr: ErrOperationNotSupported,
+		delete: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.DeleteAllArchivedTasks(queue)
+		},
+	},
+	StateCompleted: {
+		list: func(inspector *asynq.Inspector, queue string, size, page int) ([]*asynq.TaskInfo, error) {
+			return inspector.ListCompletedTasks(queue, managerPageOptions(size, page)...)
+		},
+		runErr:     ErrOperationNotSupported,
+		archiveErr: ErrOperationNotSupported,
+		delete: func(inspector *asynq.Inspector, queue string) (int, error) {
+			return inspector.DeleteAllCompletedTasks(queue)
+		},
+	},
+	StateActive: {
+		runErr:     ErrOperationNotSupported,
+		archiveErr: ErrArchivingActiveJobs,
+		deleteErr:  ErrOperationNotSupported,
+	},
+	StateAggregating: {
+		listErr:    ErrGroupRequiredForAggregation,
+		runErr:     ErrGroupRequiredForAggregation,
+		archiveErr: ErrGroupRequiredForAggregation,
+		deleteErr:  ErrGroupRequiredForAggregation,
+	},
+}
+
+func managerPageOptions(size, page int) []asynq.ListOption {
+	return []asynq.ListOption{asynq.PageSize(size), asynq.Page(page)}
+}
+
+func managerRuleForState(state JobState) (managerStateRule, error) {
+	if !IsValidJobState(state) {
+		return managerStateRule{}, ErrInvalidJobState
+	}
+
+	rule, ok := managerStateRules[state]
+	if !ok {
+		return managerStateRule{}, ErrUnsupportedJobStateForAction
+	}
+	return rule, nil
+}
+
+func managerUnsupportedAction(err error) error {
+	if err != nil {
+		return err
+	}
+	return ErrOperationNotSupported
+}
+
+func toJobInfoList(tasks []*asynq.TaskInfo) []*JobInfo {
+	jobInfos := make([]*JobInfo, len(tasks))
+	for i, task := range tasks {
+		jobInfos[i] = toJobInfo(task, nil)
+	}
+	return jobInfos
+}
+
+func requireGroup(group string) error {
+	if group == "" {
+		return ErrGroupRequiredForAggregation
+	}
+	return nil
 }
 
 // ListWorkers retrieves information about all Asynq servers (workers) and the jobs they are currently processing.
 func (m *Manager) ListWorkers() ([]*WorkerInfo, error) {
 	servers, err := m.inspector.Servers()
 	if err != nil {
-		return nil, err
+		return nil, mapManagerError(err)
 	}
 
 	workers := make([]*WorkerInfo, len(servers))
@@ -72,7 +211,7 @@ func (m *Manager) ListWorkers() ([]*WorkerInfo, error) {
 func (m *Manager) WorkerInfo(workerID string) (*WorkerInfo, error) {
 	servers, err := m.inspector.Servers()
 	if err != nil {
-		return nil, err
+		return nil, mapManagerError(err)
 	}
 
 	for _, server := range servers {
@@ -88,14 +227,14 @@ func (m *Manager) WorkerInfo(workerID string) (*WorkerInfo, error) {
 func (m *Manager) ListQueues() ([]*QueueInfo, error) {
 	queues, err := m.inspector.Queues()
 	if err != nil {
-		return nil, err
+		return nil, mapManagerError(err)
 	}
 
 	snapshots := make([]*QueueInfo, len(queues))
 	for i, queue := range queues {
 		qinfo, err := m.inspector.GetQueueInfo(queue)
 		if err != nil {
-			return nil, err
+			return nil, mapManagerError(err)
 		}
 		snapshots[i] = toQueueInfo(qinfo)
 	}
@@ -106,7 +245,7 @@ func (m *Manager) ListQueues() ([]*QueueInfo, error) {
 func (m *Manager) QueueInfo(queueName string) (*QueueInfo, error) {
 	qinfo, err := m.inspector.GetQueueInfo(queueName)
 	if err != nil {
-		return nil, handleQueueError(err)
+		return nil, mapManagerError(err)
 	}
 	return toQueueInfo(qinfo), nil
 }
@@ -115,7 +254,7 @@ func (m *Manager) QueueInfo(queueName string) (*QueueInfo, error) {
 func (m *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats, error) {
 	dstats, err := m.inspector.History(queueName, days)
 	if err != nil {
-		return nil, handleQueueError(err)
+		return nil, mapManagerError(err)
 	}
 
 	dailyStats := make([]*QueueDailyStats, len(dstats))
@@ -128,20 +267,13 @@ func (m *Manager) ListQueueStats(queueName string, days int) ([]*QueueDailyStats
 
 // DeleteQueue deletes a queue by its name.
 func (m *Manager) DeleteQueue(queueName string, force bool) error {
-	err := m.inspector.DeleteQueue(queueName, force)
-	if errors.Is(err, asynq.ErrQueueNotEmpty) {
-		return ErrQueueNotEmpty
-	}
-	if err != nil {
-		return handleQueueError(err)
-	}
-	return nil
+	return mapManagerError(m.inspector.DeleteQueue(queueName, force))
 }
 
 // PauseQueue pauses a queue by its name.
 func (m *Manager) PauseQueue(queueName string) error {
 	if err := m.inspector.PauseQueue(queueName); err != nil {
-		return handleQueueError(err)
+		return mapManagerError(err)
 	}
 	return nil
 }
@@ -149,61 +281,55 @@ func (m *Manager) PauseQueue(queueName string) error {
 // ResumeQueue resumes a paused queue by its name.
 func (m *Manager) ResumeQueue(queueName string) error {
 	if err := m.inspector.UnpauseQueue(queueName); err != nil {
-		return handleQueueError(err)
+		return mapManagerError(err)
 	}
 	return nil
 }
 
 // ListJobsByState lists jobs in a specified queue filtered by their state.
 func (m *Manager) ListJobsByState(queue string, state JobState, size, page int) ([]*JobInfo, error) {
-	if !IsValidJobState(state) {
-		return nil, ErrInvalidJobState
-	}
-
 	if state == StateActive {
 		return m.ListActiveJobs(queue, size, page)
 	}
 
-	var tasks []*asynq.TaskInfo
-	var err error
-	switch state {
-	case StatePending:
-		tasks, err = m.inspector.ListPendingTasks(queue, asynq.PageSize(size), asynq.Page(page))
-	case StateRetry:
-		tasks, err = m.inspector.ListRetryTasks(queue, asynq.PageSize(size), asynq.Page(page))
-	case StateArchived:
-		tasks, err = m.inspector.ListArchivedTasks(queue, asynq.PageSize(size), asynq.Page(page))
-	case StateCompleted:
-		tasks, err = m.inspector.ListCompletedTasks(queue, asynq.PageSize(size), asynq.Page(page))
-	case StateScheduled:
-		tasks, err = m.inspector.ListScheduledTasks(queue, asynq.PageSize(size), asynq.Page(page))
-	case StateAggregating:
-		tasks, err = m.inspector.ListAggregatingTasks(queue, "", asynq.PageSize(size), asynq.Page(page))
-	default:
-		return nil, ErrUnsupportedJobStateForAction
-	}
-
+	rule, err := managerRuleForState(state)
 	if err != nil {
 		return nil, err
 	}
-
-	jobInfos := make([]*JobInfo, len(tasks))
-	for i, task := range tasks {
-		jobInfos[i] = toJobInfo(task, nil)
+	if rule.list == nil {
+		return nil, managerUnsupportedAction(rule.listErr)
 	}
-	return jobInfos, nil
+
+	tasks, err := rule.list(m.inspector, queue, size, page)
+	if err != nil {
+		return nil, mapManagerError(err)
+	}
+	return toJobInfoList(tasks), nil
+}
+
+// ListAggregatingJobs lists aggregating jobs in a specified queue and group.
+func (m *Manager) ListAggregatingJobs(queue, group string, size, page int) ([]*JobInfo, error) {
+	if err := requireGroup(group); err != nil {
+		return nil, err
+	}
+
+	tasks, err := m.inspector.ListAggregatingTasks(queue, group, managerPageOptions(size, page)...)
+	if err != nil {
+		return nil, mapManagerError(err)
+	}
+	return toJobInfoList(tasks), nil
 }
 
 // ListActiveJobs lists active (currently processing) jobs for a given queue.
 func (m *Manager) ListActiveJobs(queue string, size, page int) ([]*JobInfo, error) {
-	tasks, err := m.inspector.ListActiveTasks(queue, asynq.PageSize(size), asynq.Page(page))
+	tasks, err := m.inspector.ListActiveTasks(queue, managerPageOptions(size, page)...)
 	if err != nil {
-		return nil, err
+		return nil, mapManagerError(err)
 	}
 
 	servers, err := m.inspector.Servers()
 	if err != nil {
-		return nil, err
+		return nil, mapManagerError(err)
 	}
 
 	workerInfoMap := make(map[string]*asynq.WorkerInfo)
@@ -225,130 +351,106 @@ func (m *Manager) ListActiveJobs(queue string, size, page int) ([]*JobInfo, erro
 
 // JobInfo retrieves information for a single job using its ID and queue name.
 func (m *Manager) JobInfo(queue, jobID string) (*JobInfo, error) {
-	taskInfo, err := m.inspector.GetTaskInfo(queue, jobID)
-	if errors.Is(err, asynq.ErrTaskNotFound) {
-		return nil, ErrJobNotFound
-	}
+	taskInfo, err := m.taskInfo(queue, jobID)
 	if err != nil {
 		return nil, err
 	}
 	return toJobInfo(taskInfo, nil), nil
 }
 
+// JobPayload retrieves the raw encoded payload for a job.
+func (m *Manager) JobPayload(queue, jobID string) ([]byte, error) {
+	taskInfo, err := m.taskInfo(queue, jobID)
+	if err != nil {
+		return nil, err
+	}
+	return append([]byte{}, taskInfo.Payload...), nil
+}
+
+// JobResult retrieves the raw encoded result for a completed retained job.
+func (m *Manager) JobResult(queue, jobID string) ([]byte, error) {
+	taskInfo, err := m.taskInfo(queue, jobID)
+	if err != nil {
+		return nil, err
+	}
+	if taskInfo.Result == nil {
+		return nil, ErrJobResultNotFound
+	}
+	return append([]byte{}, taskInfo.Result...), nil
+}
+
 // RunJob triggers immediate execution of a job with the specified ID.
 func (m *Manager) RunJob(queue, jobID string) error {
-	err := m.inspector.RunTask(queue, jobID)
-	if errors.Is(err, asynq.ErrTaskNotFound) {
-		return ErrJobNotFound
-	}
-	return err
+	return mapManagerError(m.inspector.RunTask(queue, jobID))
 }
 
 // RunJobsByState triggers all jobs in a specified queue and state to run immediately.
 func (m *Manager) RunJobsByState(queue string, state JobState) (int, error) {
-	if !IsValidJobState(state) {
-		return 0, ErrInvalidJobState
+	rule, err := managerRuleForState(state)
+	if err != nil {
+		return 0, err
+	}
+	if rule.run == nil {
+		return 0, managerUnsupportedAction(rule.runErr)
 	}
 
-	var count int
-	var err error
-	switch state {
-	case StateScheduled:
-		count, err = m.inspector.RunAllScheduledTasks(queue)
-	case StateRetry:
-		count, err = m.inspector.RunAllRetryTasks(queue)
-	case StateArchived:
-		count, err = m.inspector.RunAllArchivedTasks(queue)
-	case StateAggregating:
-		return 0, ErrGroupRequiredForAggregation
-	case StateActive, StatePending, StateCompleted:
-		return 0, ErrOperationNotSupported
-	default:
-		return 0, ErrUnsupportedJobStateForAction
-	}
-
-	return count, err
+	count, err := rule.run(m.inspector, queue)
+	return count, mapManagerError(err)
 }
 
-// batchOperation performs a batch operation on items and returns succeeded, failed items, and aggregated errors.
-func batchOperation[T any](items []T, operation func(T) error) (succeeded, failed []T, err error) {
-	succeeded = make([]T, 0, len(items))
-	failed = make([]T, 0, len(items))
-	var errs []error
+func batchJobOperation(jobIDs []string, operation func(string) error) (BatchJobResult, error) {
+	result := BatchJobResult{
+		Succeeded: make([]string, 0, len(jobIDs)),
+		Failed:    make([]BatchJobError, 0),
+	}
 
-	for _, item := range items {
-		if opErr := operation(item); opErr != nil {
-			failed = append(failed, item)
-			errs = append(errs, opErr)
+	for _, jobID := range jobIDs {
+		if err := operation(jobID); err != nil {
+			result.Failed = append(result.Failed, BatchJobError{JobID: jobID, Err: err})
 			continue
 		}
-		succeeded = append(succeeded, item)
+		result.Succeeded = append(result.Succeeded, jobID)
 	}
 
-	if len(errs) > 0 {
-		return succeeded, failed, errors.Join(errs...)
-	}
-	return succeeded, failed, nil
+	return result, result.Err()
 }
 
 // BatchRunJobs triggers immediate execution of multiple jobs identified by their IDs.
-func (m *Manager) BatchRunJobs(queue string, jobIDs []string) ([]string, []string, error) {
-	return batchOperation(jobIDs, func(jobID string) error {
-		return m.inspector.RunTask(queue, jobID)
+func (m *Manager) BatchRunJobs(queue string, jobIDs []string) (BatchJobResult, error) {
+	return batchJobOperation(jobIDs, func(jobID string) error {
+		return m.RunJob(queue, jobID)
 	})
 }
 
 // ArchiveJob moves a job with the specified ID to the archive.
 func (m *Manager) ArchiveJob(queue, jobID string) error {
-	err := m.inspector.ArchiveTask(queue, jobID)
-	if errors.Is(err, asynq.ErrTaskNotFound) {
-		return ErrJobNotFound
-	}
-	return err
+	return mapManagerError(m.inspector.ArchiveTask(queue, jobID))
 }
 
 // ArchiveJobsByState archives all jobs in a specified queue based on their state.
 func (m *Manager) ArchiveJobsByState(queue string, state JobState) (int, error) {
-	if !IsValidJobState(state) {
-		return 0, ErrInvalidJobState
+	rule, err := managerRuleForState(state)
+	if err != nil {
+		return 0, err
+	}
+	if rule.archive == nil {
+		return 0, managerUnsupportedAction(rule.archiveErr)
 	}
 
-	var count int
-	var err error
-	switch state {
-	case StatePending:
-		count, err = m.inspector.ArchiveAllPendingTasks(queue)
-	case StateScheduled:
-		count, err = m.inspector.ArchiveAllScheduledTasks(queue)
-	case StateRetry:
-		count, err = m.inspector.ArchiveAllRetryTasks(queue)
-	case StateArchived, StateCompleted:
-		return 0, ErrOperationNotSupported
-	case StateActive:
-		return 0, ErrArchivingActiveJobs
-	case StateAggregating:
-		return 0, ErrGroupRequiredForAggregation
-	default:
-		return 0, ErrUnsupportedJobStateForAction
-	}
-
-	return count, err
+	count, err := rule.archive(m.inspector, queue)
+	return count, mapManagerError(err)
 }
 
 // BatchArchiveJobs archives multiple jobs identified by their IDs.
-func (m *Manager) BatchArchiveJobs(queue string, jobIDs []string) ([]string, []string, error) {
-	return batchOperation(jobIDs, func(jobID string) error {
-		return m.inspector.ArchiveTask(queue, jobID)
+func (m *Manager) BatchArchiveJobs(queue string, jobIDs []string) (BatchJobResult, error) {
+	return batchJobOperation(jobIDs, func(jobID string) error {
+		return m.ArchiveJob(queue, jobID)
 	})
 }
 
 // CancelJob cancels a job with the specified ID.
 func (m *Manager) CancelJob(jobID string) error {
-	err := m.inspector.CancelProcessing(jobID)
-	if errors.Is(err, asynq.ErrTaskNotFound) {
-		return ErrJobNotFound
-	}
-	return err
+	return mapManagerError(m.inspector.CancelProcessing(jobID))
 }
 
 // CancelActiveJobs cancels all active jobs in the specified queue.
@@ -356,9 +458,9 @@ func (m *Manager) CancelActiveJobs(queue string, size, page int) (int, error) {
 	var totalCount int
 
 	for {
-		tasks, err := m.inspector.ListActiveTasks(queue, asynq.PageSize(size), asynq.Page(page))
+		tasks, err := m.inspector.ListActiveTasks(queue, managerPageOptions(size, page)...)
 		if err != nil {
-			return totalCount, err
+			return totalCount, mapManagerError(err)
 		}
 
 		if len(tasks) == 0 {
@@ -366,7 +468,7 @@ func (m *Manager) CancelActiveJobs(queue string, size, page int) (int, error) {
 		}
 
 		for _, task := range tasks {
-			if err := m.inspector.CancelProcessing(task.ID); err != nil {
+			if err := m.CancelJob(task.ID); err != nil {
 				return totalCount, err
 			}
 			totalCount++
@@ -383,73 +485,71 @@ func (m *Manager) CancelActiveJobs(queue string, size, page int) (int, error) {
 }
 
 // BatchCancelJobs cancels multiple jobs identified by their IDs.
-func (m *Manager) BatchCancelJobs(jobIDs []string) ([]string, []string, error) {
-	return batchOperation(jobIDs, func(jobID string) error {
-		return m.inspector.CancelProcessing(jobID)
+func (m *Manager) BatchCancelJobs(jobIDs []string) (BatchJobResult, error) {
+	return batchJobOperation(jobIDs, func(jobID string) error {
+		return m.CancelJob(jobID)
 	})
 }
 
 // DeleteJob deletes a job with the specified ID from its queue.
 func (m *Manager) DeleteJob(queue, jobID string) error {
-	err := m.inspector.DeleteTask(queue, jobID)
-	if errors.Is(err, asynq.ErrTaskNotFound) {
-		return ErrJobNotFound
-	}
-	return err
+	return mapManagerError(m.inspector.DeleteTask(queue, jobID))
 }
 
 // DeleteJobsByState deletes all jobs in a specified queue based on their state.
 func (m *Manager) DeleteJobsByState(queue string, state JobState) (int, error) {
-	if !IsValidJobState(state) {
-		return 0, ErrInvalidJobState
+	rule, err := managerRuleForState(state)
+	if err != nil {
+		return 0, err
+	}
+	if rule.delete == nil {
+		return 0, managerUnsupportedAction(rule.deleteErr)
 	}
 
-	var count int
-	var err error
-	switch state {
-	case StatePending:
-		count, err = m.inspector.DeleteAllPendingTasks(queue)
-	case StateArchived:
-		count, err = m.inspector.DeleteAllArchivedTasks(queue)
-	case StateCompleted:
-		count, err = m.inspector.DeleteAllCompletedTasks(queue)
-	case StateScheduled:
-		count, err = m.inspector.DeleteAllScheduledTasks(queue)
-	case StateRetry:
-		count, err = m.inspector.DeleteAllRetryTasks(queue)
-	case StateActive, StateAggregating:
-		return 0, ErrOperationNotSupported
-	default:
-		return 0, ErrUnsupportedJobStateForAction
-	}
-
-	return count, err
+	count, err := rule.delete(m.inspector, queue)
+	return count, mapManagerError(err)
 }
 
 // BatchDeleteJobs deletes multiple jobs identified by their IDs.
-func (m *Manager) BatchDeleteJobs(queue string, jobIDs []string) ([]string, []string, error) {
-	return batchOperation(jobIDs, func(jobID string) error {
-		return m.inspector.DeleteTask(queue, jobID)
+func (m *Manager) BatchDeleteJobs(queue string, jobIDs []string) (BatchJobResult, error) {
+	return batchJobOperation(jobIDs, func(jobID string) error {
+		return m.DeleteJob(queue, jobID)
 	})
 }
 
 // RunAggregatingJobs triggers all aggregating jobs to run immediately in a specified queue and group.
 func (m *Manager) RunAggregatingJobs(queue, group string) (int, error) {
-	return m.inspector.RunAllAggregatingTasks(queue, group)
+	if err := requireGroup(group); err != nil {
+		return 0, err
+	}
+	count, err := m.inspector.RunAllAggregatingTasks(queue, group)
+	return count, mapManagerError(err)
 }
 
 // ArchiveAggregatingJobs archives all aggregating jobs in a specified queue and group.
 func (m *Manager) ArchiveAggregatingJobs(queue, group string) (int, error) {
-	return m.inspector.ArchiveAllAggregatingTasks(queue, group)
+	if err := requireGroup(group); err != nil {
+		return 0, err
+	}
+	count, err := m.inspector.ArchiveAllAggregatingTasks(queue, group)
+	return count, mapManagerError(err)
 }
 
 // DeleteAggregatingJobs deletes all aggregating tasks in a specified queue and group.
 func (m *Manager) DeleteAggregatingJobs(queue, group string) (int, error) {
-	return m.inspector.DeleteAllAggregatingTasks(queue, group)
+	if err := requireGroup(group); err != nil {
+		return 0, err
+	}
+	count, err := m.inspector.DeleteAllAggregatingTasks(queue, group)
+	return count, mapManagerError(err)
 }
 
 // RedisInfo retrieves information from the Redis server or cluster.
 func (m *Manager) RedisInfo(ctx context.Context) (*RedisInfo, error) {
+	if ctx == nil {
+		return nil, ErrInvalidContext
+	}
+
 	switch client := m.client.(type) {
 	case *redis.ClusterClient:
 		return m.getRedisClusterInfo(ctx, client)
@@ -463,7 +563,7 @@ func (m *Manager) RedisInfo(ctx context.Context) (*RedisInfo, error) {
 func getRedisStandardInfo(ctx context.Context, client *redis.Client) (*RedisInfo, error) {
 	rawInfo, err := client.Info(ctx, "all").Result()
 	if err != nil {
-		return nil, err
+		return nil, mapRedisInfoError(err)
 	}
 	info := parseRedisInfo(rawInfo)
 	return &RedisInfo{
@@ -477,17 +577,17 @@ func getRedisStandardInfo(ctx context.Context, client *redis.Client) (*RedisInfo
 func (m *Manager) getRedisClusterInfo(ctx context.Context, client *redis.ClusterClient) (*RedisInfo, error) {
 	rawInfo, err := client.Info(ctx).Result()
 	if err != nil {
-		return nil, err
+		return nil, mapRedisInfoError(err)
 	}
 	clusterNodes, err := client.ClusterNodes(ctx).Result()
 	if err != nil {
-		return nil, err
+		return nil, mapRedisInfoError(err)
 	}
 	info := parseRedisInfo(rawInfo)
 
 	queueLocations, err := m.fetchQueueLocations()
 	if err != nil {
-		return nil, err
+		return nil, mapRedisInfoError(err)
 	}
 
 	return &RedisInfo{
@@ -503,19 +603,19 @@ func (m *Manager) getRedisClusterInfo(ctx context.Context, client *redis.Cluster
 func (m *Manager) fetchQueueLocations() ([]*QueueLocation, error) {
 	queues, err := m.inspector.Queues()
 	if err != nil {
-		return nil, err
+		return nil, mapManagerError(err)
 	}
 
 	locations := make([]*QueueLocation, len(queues))
 	for i, queue := range queues {
 		keySlot, err := m.inspector.ClusterKeySlot(queue)
 		if err != nil {
-			return nil, err
+			return nil, mapManagerError(err)
 		}
 
 		nodes, err := m.inspector.ClusterNodes(queue)
 		if err != nil {
-			return nil, err
+			return nil, mapManagerError(err)
 		}
 
 		nodeAddrs := make([]string, len(nodes))
@@ -543,15 +643,50 @@ func parseRedisInfo(infoStr string) map[string]string {
 	return info
 }
 
-func handleQueueError(err error) error {
-	if errors.Is(err, asynq.ErrQueueNotFound) || isQueueNotFoundError(err) {
-		return ErrQueueNotFound
+func (m *Manager) taskInfo(queue, jobID string) (*asynq.TaskInfo, error) {
+	taskInfo, err := m.inspector.GetTaskInfo(queue, jobID)
+	if err != nil {
+		return nil, mapManagerError(err)
 	}
-	return err
+	return taskInfo, nil
 }
 
-// isQueueNotFoundError uses string matching as a workaround because asynq
-// does not expose a sentinel error for all queue-not-found scenarios.
-func isQueueNotFoundError(err error) bool {
-	return strings.Contains(err.Error(), "does not exist")
+func mapManagerError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, asynq.ErrTaskNotFound):
+		return ErrJobNotFound
+	case errors.Is(err, asynq.ErrQueueNotFound):
+		return ErrQueueNotFound
+	case errors.Is(err, asynq.ErrQueueNotEmpty):
+		return ErrQueueNotEmpty
+	case isAsynqNotFound(err, "cannot find task"):
+		return ErrJobNotFound
+	case isAsynqNotFound(err, "queue ") && strings.Contains(err.Error(), "does not exist"):
+		return ErrQueueNotFound
+	default:
+		return err
+	}
+}
+
+func isAsynqNotFound(err error, text string) bool {
+	var debug interface{ DebugString() string }
+	return errors.As(err, &debug) &&
+		strings.Contains(debug.DebugString(), "NOT_FOUND") &&
+		strings.Contains(debug.DebugString(), text)
+}
+
+func mapRedisInfoError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return err
+	case errors.Is(err, ErrQueueNotFound), errors.Is(err, ErrJobNotFound),
+		errors.Is(err, ErrQueueNotEmpty), errors.Is(err, ErrRedisClientNotSupported):
+		return err
+	default:
+		return fmt.Errorf("%w: %w", ErrRedisUnavailable, err)
+	}
 }

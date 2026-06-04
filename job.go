@@ -1,7 +1,7 @@
 package queue
 
 import (
-	"crypto/md5" //nolint:gosec // Used only for stable, non-cryptographic job fingerprints.
+	"crypto/sha256"
 	"fmt"
 	"time"
 
@@ -9,15 +9,12 @@ import (
 	"github.com/hibiken/asynq"
 )
 
-// Job represents a task that will be executed by a worker.
+// Job is an immutable enqueue specification.
 type Job struct {
-	ID           string              `json:"id"`          // Unique identifier for the job.
-	Fingerprint  string              `json:"fingerprint"` // Unique hash for the job based on its type and payload.
-	Type         string              `json:"type"`        // Type of job, used for handler mapping.
-	Payload      any                 `json:"payload"`     // Job data.
-	rawPayload   []byte              `json:"-"`           // Original JSON payload bytes for reconstructed tasks.
-	resultWriter *asynq.ResultWriter `json:"-"`           // Result writer for the job.
-	Options      JobOptions          `json:"options"`     // Execution options for the job.
+	jobType       string
+	payloadBytes  []byte
+	options       JobOptions
+	contentDigest string
 }
 
 // JobOptions encapsulates settings that control job execution.
@@ -30,183 +27,203 @@ type JobOptions struct {
 	Retention  time.Duration `json:"retention"`   // Duration to retain the job data after completion.
 }
 
-// NewJob initializes a new Job with the provided type, payload, and configuration options.
-func NewJob(jobType string, payload any, opts ...JobOption) *Job {
-	job := &Job{
-		Type:    jobType,
-		Payload: payload,
-		Options: JobOptions{Queue: DefaultQueue}, // Use a default queue unless overridden.
+// NewJob validates and initializes an immutable Job.
+func NewJob(jobType string, payload any, opts ...JobOption) (*Job, error) {
+	if jobType == "" {
+		return nil, ErrNoJobTypeSpecified
 	}
 
+	payloadBytes, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize payload: %w: %w", ErrSerializationFailure, err)
+	}
+
+	options := JobOptions{Queue: DefaultQueue}
 	for _, opt := range opts {
-		opt(job)
+		opt.applyJobOption(&options)
+	}
+	if err := validateJobOptions(options); err != nil {
+		return nil, err
 	}
 
-	job.fingerprint()
-
-	return job
+	payloadBytes = append([]byte{}, payloadBytes...)
+	return &Job{
+		jobType:       jobType,
+		payloadBytes:  payloadBytes,
+		options:       cloneJobOptions(options),
+		contentDigest: contentDigest(jobType, payloadBytes),
+	}, nil
 }
 
-// WithOptions dynamically updates the job's options.
-func (j *Job) WithOptions(opts ...JobOption) {
-	for _, opt := range opts {
-		opt(j)
+// Type returns the job type used for handler routing.
+func (j *Job) Type() string {
+	if j == nil {
+		return ""
 	}
+	return j.jobType
 }
 
-// JobOption defines a function signature for job configuration options.
-type JobOption func(*Job)
+// Options returns a copy of the job execution options.
+func (j *Job) Options() JobOptions {
+	if j == nil {
+		return JobOptions{}
+	}
+	return cloneJobOptions(j.options)
+}
+
+// ContentDigest returns a stable digest derived from the job type and payload.
+func (j *Job) ContentDigest() string {
+	if j == nil {
+		return ""
+	}
+	return j.contentDigest
+}
+
+// PayloadBytes returns a copy of the encoded job payload.
+func (j *Job) PayloadBytes() []byte {
+	if j == nil {
+		return nil
+	}
+	return append([]byte{}, j.payloadBytes...)
+}
+
+// JobOption configures a Job.
+type JobOption interface {
+	applyJobOption(*JobOptions)
+}
+
+type jobOption func(*JobOptions)
+
+func (f jobOption) applyJobOption(options *JobOptions) {
+	f(options)
+}
 
 // WithDelay sets the initial delay before the job is processed.
 func WithDelay(delay time.Duration) JobOption {
-	return func(j *Job) { j.Options.Delay = delay }
+	return jobOption(func(opts *JobOptions) { opts.Delay = delay })
 }
 
 // WithMaxRetries sets the maximum number of retry attempts for the job.
 func WithMaxRetries(maxRetries int) JobOption {
-	return func(j *Job) { j.Options.MaxRetries = maxRetries }
+	return jobOption(func(opts *JobOptions) { opts.MaxRetries = maxRetries })
 }
 
 // WithQueue sets the queue name to which the job is dispatched.
 func WithQueue(queue string) JobOption {
-	return func(j *Job) { j.Options.Queue = queue }
+	return jobOption(func(opts *JobOptions) { opts.Queue = queue })
 }
 
 // WithScheduleAt sets a specific time at which the job should be processed.
 func WithScheduleAt(scheduleAt *time.Time) JobOption {
-	return func(j *Job) { j.Options.ScheduleAt = scheduleAt }
+	return jobOption(func(opts *JobOptions) {
+		if scheduleAt == nil {
+			opts.ScheduleAt = nil
+			return
+		}
+		snapshot := *scheduleAt
+		opts.ScheduleAt = &snapshot
+	})
 }
 
 // WithRetention sets the duration to retain the job data after completion.
 func WithRetention(retention time.Duration) JobOption {
-	return func(j *Job) { j.Options.Retention = retention }
+	return jobOption(func(opts *JobOptions) { opts.Retention = retention })
 }
 
 // WithDeadline sets the time by which the job must complete.
 func WithDeadline(deadline *time.Time) JobOption {
-	return func(j *Job) { j.Options.Deadline = deadline }
+	return jobOption(func(opts *JobOptions) {
+		if deadline == nil {
+			opts.Deadline = nil
+			return
+		}
+		snapshot := *deadline
+		opts.Deadline = &snapshot
+	})
 }
 
 // ConvertToAsynqTask converts the Job into an asynq.Task, ready for enqueueing.
 func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
-	if j.Type == "" {
-		return nil, nil, ErrNoJobTypeSpecified
-	}
-	if j.Options.Queue == "" {
-		return nil, nil, ErrNoJobQueueSpecified
-	}
-
-	payloadBytes, err := j.payloadBytes()
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to serialize payload: %w: %w", ErrSerializationFailure, err)
+	if j == nil {
+		return nil, nil, ErrInvalidJob
 	}
 
 	opts := j.ConvertToAsynqOptions()
-	return asynq.NewTask(j.Type, payloadBytes), opts, nil
+	return asynq.NewTask(j.jobType, j.PayloadBytes()), opts, nil
 }
 
 // ConvertToAsynqOptions converts the Job's options into asynq.Option slice.
 func (j *Job) ConvertToAsynqOptions() []asynq.Option {
-	opts := make([]asynq.Option, 0, 6)
+	if j == nil {
+		return nil
+	}
 
-	if j.Options.Queue != "" {
-		opts = append(opts, asynq.Queue(j.Options.Queue))
+	opts := make([]asynq.Option, 0, 6)
+	options := j.options
+
+	if options.Queue != "" {
+		opts = append(opts, asynq.Queue(options.Queue))
 	}
-	if j.Options.Delay > 0 {
-		opts = append(opts, asynq.ProcessIn(j.Options.Delay))
+	if options.Delay > 0 {
+		opts = append(opts, asynq.ProcessIn(options.Delay))
 	}
-	if j.Options.ScheduleAt != nil && !j.Options.ScheduleAt.IsZero() {
-		opts = append(opts, asynq.ProcessAt(*j.Options.ScheduleAt))
+	if options.ScheduleAt != nil && !options.ScheduleAt.IsZero() {
+		opts = append(opts, asynq.ProcessAt(*options.ScheduleAt))
 	}
-	if j.Options.MaxRetries > 0 {
-		opts = append(opts, asynq.MaxRetry(j.Options.MaxRetries))
+	if options.MaxRetries > 0 {
+		opts = append(opts, asynq.MaxRetry(options.MaxRetries))
 	}
-	if j.Options.Deadline != nil && !j.Options.Deadline.IsZero() {
-		opts = append(opts, asynq.Deadline(*j.Options.Deadline))
+	if options.Deadline != nil && !options.Deadline.IsZero() {
+		opts = append(opts, asynq.Deadline(*options.Deadline))
 	}
-	if j.Options.Retention > 0 {
-		opts = append(opts, asynq.Retention(j.Options.Retention))
+	if options.Retention > 0 {
+		opts = append(opts, asynq.Retention(options.Retention))
 	}
 
 	return opts
 }
 
-// fingerprint generates a unique hash for the job based on its type and payload.
-func (j *Job) fingerprint() {
-	if j.Fingerprint != "" {
-		return
+func validateJobOptions(options JobOptions) error {
+	if options.Queue == "" {
+		return ErrNoJobQueueSpecified
 	}
-
-	hash := md5.New() //nolint:gosec // Used only for stable, non-cryptographic job fingerprints.
-	hash.Write([]byte(j.Type))
-
-	payloadBytes, _ := j.payloadBytes()
-	hash.Write(payloadBytes)
-	optionsBytes, _ := json.Marshal(j.Options)
-	hash.Write(optionsBytes)
-
-	j.Fingerprint = fmt.Sprintf("%x", hash.Sum(nil))
+	if options.MaxRetries < 0 {
+		return fmt.Errorf("%w: max retries cannot be negative", ErrInvalidJobOptions)
+	}
+	if options.Delay < 0 {
+		return fmt.Errorf("%w: delay cannot be negative", ErrInvalidJobOptions)
+	}
+	if options.Retention < 0 {
+		return fmt.Errorf("%w: retention cannot be negative", ErrInvalidJobOptions)
+	}
+	return nil
 }
 
-func (j *Job) payloadBytes() ([]byte, error) {
-	if j.rawPayload != nil {
-		return j.rawPayload, nil
+func cloneJobOptions(options JobOptions) JobOptions {
+	clone := options
+	if options.ScheduleAt != nil {
+		scheduleAt := *options.ScheduleAt
+		clone.ScheduleAt = &scheduleAt
 	}
-	return json.Marshal(j.Payload)
+	if options.Deadline != nil {
+		deadline := *options.Deadline
+		clone.Deadline = &deadline
+	}
+	return clone
+}
+
+func contentDigest(jobType string, payloadBytes []byte) string {
+	hash := sha256.New()
+	hash.Write([]byte(jobType))
+	hash.Write([]byte{0})
+	hash.Write(payloadBytes)
+	return fmt.Sprintf("%x", hash.Sum(nil))
 }
 
 // DecodePayload decodes the job payload into a given struct.
 func (j *Job) DecodePayload(v any) error {
-	payloadBytes, err := j.payloadBytes()
-	if err != nil {
-		return fmt.Errorf("failed to serialize payload: %w: %w", ErrSerializationFailure, err)
+	if j == nil {
+		return ErrInvalidJob
 	}
-	return json.Unmarshal(payloadBytes, v)
-}
-
-// SetID sets the job's unique identifier.
-func (j *Job) SetID(id string) *Job {
-	j.ID = id
-	return j
-}
-
-// SetResultWriter sets the result writer for the job.
-func (j *Job) SetResultWriter(rw *asynq.ResultWriter) *Job {
-	j.resultWriter = rw
-	return j
-}
-
-// WriteResult writes the result of the job to the result writer.
-func (j *Job) WriteResult(result any) error {
-	if j.resultWriter == nil {
-		return ErrResultWriterNotSet
-	}
-
-	resultBytes, err := json.Marshal(result)
-	if err != nil {
-		return fmt.Errorf("failed to serialize result: %w: %w", ErrSerializationFailure, err)
-	}
-
-	if _, err = j.resultWriter.Write(resultBytes); err != nil {
-		return fmt.Errorf("failed to write result: %w: %w", ErrFailedToWriteResult, err)
-	}
-
-	return nil
-}
-
-// NewJobFromAsynqTask creates a Job from an existing asynq.Task.
-// The returned Job contains the task's type and raw payload bytes.
-func NewJobFromAsynqTask(task *asynq.Task) (*Job, error) {
-	if task == nil {
-		return nil, ErrInvalidAsynqTask
-	}
-
-	payload := append([]byte{}, task.Payload()...)
-	job := &Job{
-		Type:       task.Type(),
-		Payload:    payload,
-		rawPayload: payload,
-	}
-
-	return job, nil
+	return json.Unmarshal(j.payloadBytes, v)
 }

@@ -53,6 +53,8 @@ func TestWithWorkerQueues(t *testing.T) {
 	worker, err := queue.NewWorker(getRedisConfig(),
 		queue.WithWorkerQueues(queues),
 	)
+	queues["critical"] = 99
+
 	require.NoError(t, err)
 	assert.NotNil(t, worker)
 }

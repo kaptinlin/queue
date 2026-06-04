@@ -1,8 +1,10 @@
 package queue
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -16,63 +18,55 @@ var ErrInvalidCronSpec = errors.New("invalid cron spec")
 type Scheduler struct {
 	taskManager    *asynq.PeriodicTaskManager
 	configProvider ConfigProvider
-	done           chan struct{}
-	startErr       chan error
+	started        atomic.Bool
+	stopped        atomic.Bool
 }
 
-// SchedulerOptions contains options for the Scheduler.
-type SchedulerOptions struct {
-	SyncInterval    time.Duration
-	Location        *time.Location
-	ConfigProvider  ConfigProvider
-	Logger          Logger
-	PreEnqueueFunc  func(job *Job)
-	PostEnqueueFunc func(job *JobInfo, err error)
+// schedulerOptions contains options for the Scheduler.
+type schedulerOptions struct {
+	SyncInterval   time.Duration
+	Location       *time.Location
+	ConfigProvider ConfigProvider
+	Logger         Logger
 }
 
-// SchedulerOption defines a function signature for configuring the Scheduler.
-type SchedulerOption func(*SchedulerOptions)
+// SchedulerOption configures a Scheduler.
+type SchedulerOption interface {
+	applySchedulerOption(*schedulerOptions)
+}
+
+type schedulerOption func(*schedulerOptions)
+
+func (f schedulerOption) applySchedulerOption(options *schedulerOptions) {
+	f(options)
+}
 
 // WithSyncInterval sets the sync interval for the Scheduler's task manager.
 func WithSyncInterval(interval time.Duration) SchedulerOption {
-	return func(opts *SchedulerOptions) {
+	return schedulerOption(func(opts *schedulerOptions) {
 		opts.SyncInterval = interval
-	}
+	})
 }
 
 // WithSchedulerLocation sets the time location for the Scheduler.
 func WithSchedulerLocation(loc *time.Location) SchedulerOption {
-	return func(opts *SchedulerOptions) {
+	return schedulerOption(func(opts *schedulerOptions) {
 		opts.Location = loc
-	}
+	})
 }
 
 // WithConfigProvider sets a custom config provider for the Scheduler.
 func WithConfigProvider(provider ConfigProvider) SchedulerOption {
-	return func(opts *SchedulerOptions) {
+	return schedulerOption(func(opts *schedulerOptions) {
 		opts.ConfigProvider = provider
-	}
+	})
 }
 
 // WithSchedulerLogger sets a custom logger for the Scheduler.
 func WithSchedulerLogger(logger Logger) SchedulerOption {
-	return func(opts *SchedulerOptions) {
+	return schedulerOption(func(opts *schedulerOptions) {
 		opts.Logger = logger
-	}
-}
-
-// WithPreEnqueueFunc sets a function to be called before enqueuing a job.
-func WithPreEnqueueFunc(fn func(job *Job)) SchedulerOption {
-	return func(opts *SchedulerOptions) {
-		opts.PreEnqueueFunc = fn
-	}
-}
-
-// WithPostEnqueueFunc sets a function to be called after enqueuing a job.
-func WithPostEnqueueFunc(fn func(job *JobInfo, err error)) SchedulerOption {
-	return func(opts *SchedulerOptions) {
-		opts.PostEnqueueFunc = fn
-	}
+	})
 }
 
 // NewScheduler creates a new Scheduler instance with the provided Redis configuration and options.
@@ -86,12 +80,18 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 
 	asynqClientOpt := redisConfig.ToAsynqRedisOpt()
 
-	options := SchedulerOptions{
+	options := schedulerOptions{
 		Location:     time.UTC,
 		SyncInterval: 60 * time.Second,
 	}
 	for _, opt := range opts {
-		opt(&options)
+		opt.applySchedulerOption(&options)
+	}
+	if options.SyncInterval <= 0 {
+		return nil, ErrInvalidSyncInterval
+	}
+	if options.Location == nil {
+		options.Location = time.UTC
 	}
 
 	logger := options.Logger
@@ -111,23 +111,21 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 			SyncInterval:               options.SyncInterval,
 			SchedulerOpts: &asynq.SchedulerOpts{
 				Location: options.Location,
-				Logger:   logger,
-				PreEnqueueFunc: func(task *asynq.Task, opts []asynq.Option) {
-					if options.PreEnqueueFunc != nil {
-						job, _ := NewJobFromAsynqTask(task)
-						options.PreEnqueueFunc(job)
-					}
-				},
+				Logger:   newAsynqLogger(logger),
 				PostEnqueueFunc: func(taskInfo *asynq.TaskInfo, err error) {
 					if err != nil {
-						logger.Error("Failed to enqueue task: ", err)
-					} else {
-						logger.Info("Enqueued task: ", taskInfo.Type)
+						logger.Error("failed to enqueue scheduled task", "error", err)
+						return
 					}
-					if options.PostEnqueueFunc != nil {
-						jobInfo := toJobInfo(taskInfo, nil)
-						options.PostEnqueueFunc(jobInfo, err)
+					if taskInfo == nil {
+						logger.Info("enqueued scheduled task")
+						return
 					}
+					logger.Info("enqueued scheduled task",
+						"job_id", taskInfo.ID,
+						"job_type", taskInfo.Type,
+						"queue", taskInfo.Queue,
+					)
 				},
 			},
 		})
@@ -139,35 +137,42 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 	return &Scheduler{
 		taskManager:    taskManager,
 		configProvider: configProvider,
-		done:           make(chan struct{}),
-		startErr:       make(chan error, 1),
 	}, nil
 }
 
-// RegisterCron schedules a new cron job using the job type, payload, and options.
-func (s *Scheduler) RegisterCron(spec, jobType string, payload any, opts ...JobOption) (string, error) {
-	job := NewJob(jobType, payload, opts...)
-	return s.RegisterCronJob(spec, job)
-}
-
-// RegisterCronJob schedules a new cron job using the job details.
-func (s *Scheduler) RegisterCronJob(spec string, job *Job) (string, error) {
-	if _, err := cron.ParseStandard(spec); err != nil {
-		return "", ErrInvalidCronSpec
+// RegisterCron schedules a new cron job using an explicit schedule identifier.
+func (s *Scheduler) RegisterCron(identifier, spec, jobType string, payload any, opts ...JobOption) (string, error) {
+	job, err := NewJob(jobType, payload, opts...)
+	if err != nil {
+		return "", err
 	}
-	return s.configProvider.RegisterCronJob(spec, job)
+	return s.RegisterCronJob(identifier, spec, job)
 }
 
-// RegisterPeriodic schedules a new periodic job using the job type, payload, and options.
-func (s *Scheduler) RegisterPeriodic(interval time.Duration, jobType string, payload any, opts ...JobOption) (string, error) {
-	job := NewJob(jobType, payload, opts...)
-	return s.RegisterPeriodicJob(interval, job)
+// RegisterCronJob schedules a new cron job using an explicit schedule identifier.
+func (s *Scheduler) RegisterCronJob(identifier, spec string, job *Job) (string, error) {
+	if _, err := cron.ParseStandard(spec); err != nil {
+		return "", fmt.Errorf("%w: %w", ErrInvalidCronSpec, err)
+	}
+	return s.configProvider.RegisterCronJob(identifier, spec, job)
 }
 
-// RegisterPeriodicJob schedules a new periodic job using the job details and an interval.
-func (s *Scheduler) RegisterPeriodicJob(interval time.Duration, job *Job) (string, error) {
+// RegisterPeriodic schedules a new periodic job using an explicit schedule identifier.
+func (s *Scheduler) RegisterPeriodic(identifier string, interval time.Duration, jobType string, payload any, opts ...JobOption) (string, error) {
+	job, err := NewJob(jobType, payload, opts...)
+	if err != nil {
+		return "", err
+	}
+	return s.RegisterPeriodicJob(identifier, interval, job)
+}
+
+// RegisterPeriodicJob schedules a new periodic job using an explicit schedule identifier.
+func (s *Scheduler) RegisterPeriodicJob(identifier string, interval time.Duration, job *Job) (string, error) {
+	if interval <= 0 {
+		return "", ErrInvalidPeriodicInterval
+	}
 	spec := "@every " + interval.String()
-	return s.configProvider.RegisterCronJob(spec, job)
+	return s.configProvider.RegisterCronJob(identifier, spec, job)
 }
 
 // UnregisterCronJob removes a scheduled cron job using its identifier.
@@ -175,22 +180,35 @@ func (s *Scheduler) UnregisterCronJob(identifier string) error {
 	return s.configProvider.UnregisterJob(identifier)
 }
 
-// Start begins the scheduler to enqueue tasks as per the schedule.
-// Start blocks until the scheduler is shut down via Stop.
-func (s *Scheduler) Start() error {
-	if err := s.taskManager.Start(); err != nil {
+// Run starts the scheduler and blocks until ctx is canceled.
+func (s *Scheduler) Run(ctx context.Context) error {
+	if ctx == nil {
+		return ErrInvalidContext
+	}
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	close(s.startErr)
-	<-s.done
-	s.taskManager.Shutdown()
+	if s.stopped.Load() {
+		return ErrSchedulerStopped
+	}
+	if !s.started.CompareAndSwap(false, true) {
+		return ErrSchedulerAlreadyStarted
+	}
+
+	if err := s.taskManager.Start(); err != nil {
+		s.started.Store(false)
+		return err
+	}
+
+	<-ctx.Done()
+	if s.started.CompareAndSwap(true, false) {
+		s.shutdown()
+	}
+
 	return nil
 }
 
-// Stop gracefully shuts down the scheduler.
-// Stop waits for Start to have initialized before issuing the shutdown.
-func (s *Scheduler) Stop() error {
-	<-s.startErr
-	close(s.done)
-	return nil
+func (s *Scheduler) shutdown() {
+	s.taskManager.Shutdown()
+	s.stopped.Store(true)
 }

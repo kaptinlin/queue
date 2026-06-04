@@ -15,24 +15,29 @@ import (
 
 var ErrIntentionalJobFailure = errors.New("intentional job failure")
 
-func TestWorkerStartStop(t *testing.T) {
+func TestWorkerRunCanceledContext(t *testing.T) {
 	redisConfig := getRedisConfig()
 
 	// Initialize worker with minimal configuration
 	worker, err := queue.NewWorker(redisConfig)
 	require.NoError(t, err, "Failed to create worker")
 
-	// Start worker in a goroutine
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
 	go func() {
-		assert.NoError(t, worker.Start(), "Failed to start worker")
+		done <- worker.Run(ctx)
 	}()
 
 	// Allow some time for worker to start
 	time.Sleep(1 * time.Second)
+	cancel()
 
-	// Stop worker
-	err = worker.Stop()
-	assert.NoError(t, err, "Failed to stop worker")
+	select {
+	case err := <-done:
+		assert.NoError(t, err, "Failed to stop worker")
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for worker shutdown")
+	}
 }
 
 func TestWorkerRegister(t *testing.T) {
@@ -41,7 +46,7 @@ func TestWorkerRegister(t *testing.T) {
 	worker, err := queue.NewWorker(redisConfig)
 	require.NoError(t, err, "Failed to create worker")
 
-	handlerFunc := func(ctx context.Context, job *queue.Job) error {
+	handlerFunc := func(context.Context, *queue.Delivery) error {
 		// Handler logic here
 		return nil
 	}
@@ -57,7 +62,7 @@ func TestWorkerRegisterHandler(t *testing.T) {
 	worker, err := queue.NewWorker(redisConfig)
 	require.NoError(t, err, "Failed to create worker")
 
-	handler := queue.NewHandler("test_job", func(ctx context.Context, job *queue.Job) error {
+	handler := newHandler(t, "test_job", func(context.Context, *queue.Delivery) error {
 		// Handler logic
 		return nil
 	})
@@ -83,9 +88,9 @@ func TestWorkerProcessesStringPayload(t *testing.T) {
 	require.NoError(t, err, "Failed to create worker")
 
 	processed := make(chan string, 1)
-	err = worker.Register(jobType, func(_ context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(_ context.Context, delivery *queue.Delivery) error {
 		var payload string
-		if err := job.DecodePayload(&payload); err != nil {
+		if err := delivery.DecodePayload(&payload); err != nil {
 			return err
 		}
 		processed <- payload
@@ -93,24 +98,12 @@ func TestWorkerProcessesStringPayload(t *testing.T) {
 	}, queue.WithJobQueue(queueName))
 	require.NoError(t, err, "Failed to register string payload handler")
 
-	startErr := make(chan error, 1)
-	go func() {
-		startErr <- worker.Start()
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop(), "Failed to stop worker")
-		select {
-		case err := <-startErr:
-			assert.NoError(t, err, "Worker failed to start")
-		case <-time.After(2 * time.Second):
-			t.Error("timed out waiting for worker to stop")
-		}
-	}()
+	runWorker(t, worker)
 
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err, "Failed to create client")
 	defer func() {
-		assert.NoError(t, client.Stop(), "Failed to stop client")
+		assert.NoError(t, client.Close(), "Failed to close client")
 	}()
 
 	_, err = client.Enqueue(jobType, "hello", queue.WithQueue(queueName))
@@ -133,14 +126,12 @@ func TestWorkerWithWorkerErrorHandler(t *testing.T) {
 	require.NoError(t, err, "Failed to create worker with error handler")
 
 	jobType := "failJob"
-	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
 		return ErrIntentionalJobFailure
 	})
 	require.NoError(t, err, "Failed to register failing job handler")
 
-	go func() {
-		assert.NoError(t, worker.Start(), "Failed to start worker")
-	}()
+	runWorker(t, worker)
 
 	time.Sleep(2 * time.Second) // Adjusted wait time for startup
 
@@ -151,10 +142,7 @@ func TestWorkerWithWorkerErrorHandler(t *testing.T) {
 
 	time.Sleep(2 * time.Second) // Adjusted wait time for job processing
 
-	err = worker.Stop()
-	assert.NoError(t, err, "Failed to stop worker")
-
-	assert.NotEmpty(t, errorHandler.errors, "Expected the custom error handler to capture a processing error")
+	assert.NotEmpty(t, errorHandler.Errors(), "Expected the custom error handler to capture a processing error")
 }
 
 // CustomWorkerErrorHandler implements the queue.WorkerErrorHandler interface.
@@ -170,8 +158,14 @@ func NewCustomWorkerErrorHandler() *CustomWorkerErrorHandler {
 }
 
 // HandleError captures job processing errors.
-func (h *CustomWorkerErrorHandler) HandleError(err error, job *queue.Job) {
+func (h *CustomWorkerErrorHandler) HandleError(err error, delivery *queue.Delivery) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.errors = append(h.errors, err)
+}
+
+func (h *CustomWorkerErrorHandler) Errors() []error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]error{}, h.errors...)
 }

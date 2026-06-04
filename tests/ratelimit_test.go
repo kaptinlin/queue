@@ -35,26 +35,21 @@ func TestWorkerRateLimiterBlocksBeforeHandler(t *testing.T) {
 	jobType := "ratelimit_worker_test"
 	var wg sync.WaitGroup
 
-	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
 		defer wg.Done()
 		handlerCalls.Add(1)
 		return nil
 	})
 	require.NoError(t, err)
 
-	go func() {
-		assert.NoError(t, worker.Start(), "worker start failed")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop())
-	}()
+	runWorker(t, worker)
 
 	time.Sleep(1 * time.Second)
 
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err)
 	defer func() {
-		assert.NoError(t, client.Stop())
+		assert.NoError(t, client.Close())
 	}()
 
 	// Enqueue first job — should be processed.
@@ -83,26 +78,21 @@ func TestHandlerRateLimiterIndependentOfWorker(t *testing.T) {
 	jobType := "ratelimit_handler_only_test"
 	var wg sync.WaitGroup
 
-	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
 		defer wg.Done()
 		processed.Add(1)
 		return nil
 	}, queue.WithRateLimiter(handlerLimiter))
 	require.NoError(t, err)
 
-	go func() {
-		assert.NoError(t, worker.Start(), "worker start failed")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop())
-	}()
+	runWorker(t, worker)
 
 	time.Sleep(1 * time.Second)
 
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err)
 	defer func() {
-		assert.NoError(t, client.Stop())
+		assert.NoError(t, client.Close())
 	}()
 
 	// Enqueue first job — passes handler limiter.
@@ -137,26 +127,21 @@ func TestDualRateLimiterWorkerBlocksFirst(t *testing.T) {
 	jobType := "ratelimit_dual_worker_first_test"
 	var wg sync.WaitGroup
 
-	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
 		defer wg.Done()
 		handlerCalls.Add(1)
 		return nil
 	}, queue.WithRateLimiter(handlerLimiter))
 	require.NoError(t, err)
 
-	go func() {
-		assert.NoError(t, worker.Start(), "worker start failed")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop())
-	}()
+	runWorker(t, worker)
 
 	time.Sleep(1 * time.Second)
 
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err)
 	defer func() {
-		assert.NoError(t, client.Stop())
+		assert.NoError(t, client.Close())
 	}()
 
 	// First job passes both limiters.
@@ -180,21 +165,19 @@ func TestDualRateLimiterHandlerBlocksSecond(t *testing.T) {
 	// isolation after the worker-level check would have passed.
 	handlerLimiter := rate.NewLimiter(rate.Every(10*time.Second), 1)
 
-	handler := queue.NewHandler("ratelimit_dual_handler_test",
-		func(ctx context.Context, job *queue.Job) error {
+	handler := newHandler(t, "ratelimit_dual_handler_test",
+		func(context.Context, *queue.Delivery) error {
 			return nil
 		},
 		queue.WithRateLimiter(handlerLimiter),
 	)
 
-	job := &queue.Job{Type: "ratelimit_dual_handler_test", Payload: "data"}
-
 	// First call consumes the handler limiter token.
-	err := handler.Process(context.Background(), job)
+	err := handler.Process(context.Background(), nil)
 	require.NoError(t, err, "first call should pass handler limiter")
 
 	// Second call should be rate-limited by the handler limiter.
-	err = handler.Process(context.Background(), job)
+	err = handler.Process(context.Background(), nil)
 	rateLimitErr, ok := errors.AsType[*queue.ErrRateLimit](err)
 	require.True(t, ok,
 		"second call should return ErrRateLimit from handler limiter")
@@ -222,26 +205,21 @@ func TestDualRateLimiterBothAllow(t *testing.T) {
 	jobType := "ratelimit_dual_both_allow_test"
 	var wg sync.WaitGroup
 
-	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
 		defer wg.Done()
 		processed.Add(1)
 		return nil
 	}, queue.WithRateLimiter(handlerLimiter))
 	require.NoError(t, err)
 
-	go func() {
-		assert.NoError(t, worker.Start(), "worker start failed")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop())
-	}()
+	runWorker(t, worker)
 
 	time.Sleep(1 * time.Second)
 
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err)
 	defer func() {
-		assert.NoError(t, client.Stop())
+		assert.NoError(t, client.Close())
 	}()
 
 	for i := range jobCount {
@@ -287,25 +265,20 @@ func TestDualRateLimiterErrorHandlerReceivesRateLimitError(t *testing.T) {
 	jobType := "ratelimit_error_handler_test"
 	var wg sync.WaitGroup
 
-	err = worker.Register(jobType, func(ctx context.Context, job *queue.Job) error {
+	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
 		defer wg.Done()
 		return nil
 	}, queue.WithRateLimiter(handlerLimiter))
 	require.NoError(t, err)
 
-	go func() {
-		assert.NoError(t, worker.Start(), "worker start failed")
-	}()
-	defer func() {
-		assert.NoError(t, worker.Stop())
-	}()
+	runWorker(t, worker)
 
 	time.Sleep(1 * time.Second)
 
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err)
 	defer func() {
-		assert.NoError(t, client.Stop())
+		assert.NoError(t, client.Close())
 	}()
 
 	// First job passes the handler limiter.
