@@ -63,7 +63,12 @@ emailJobs.Use(TracingMiddleware(tracer))
 Applies directly to a specified job handler.
 
 ```go
-worker.Register("send_email", SendEmailHandler, WithMiddleware(LoggingMiddleware(log.New(os.Stdout, "", log.LstdFlags))))
+worker.Register(
+    "send_email",
+    SendEmailHandler,
+    WithJobQueue("default"),
+    WithMiddleware(LoggingMiddleware(log.New(os.Stdout, "", log.LstdFlags))),
+)
 ```
 
 ## Best Practices

@@ -1,15 +1,27 @@
 name: Go CI
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOTOOLCHAIN: local
 
 jobs:
   test:
+    name: Test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     services:
       redis:
@@ -23,21 +35,36 @@ jobs:
           - 6379:6379
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out repository
+        uses: actions/checkout@v6
+        # Do NOT initialize submodules
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Install Task
+        uses: go-task/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run tests
-        run: cd tests && go test -v
+        run: task test
 
   lint:
+    name: Lint
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GOGC: "50"
+      GOMEMLIMIT: 4GiB
     steps:
-      - uses: actions/checkout@v6
+      - name: Check out repository
+        uses: actions/checkout@v6
+        # Do NOT initialize submodules
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -45,13 +72,29 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: golangci-lint
+      - name: Install Task
+        uses: go-task/setup-task@v2
+        with:
+          version: 3.x
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check module graph is tidy
+        run: task tidy-lint
+
+      - name: Read golangci-lint version
+        id: golangci
+        run: echo "version=v$(cat .golangci.version)" >> "$GITHUB_OUTPUT"
+
+      - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: ${{ steps.golangci.outputs.version }}
+          args: --timeout=30m --concurrency=1 --path-prefix=.
+
   security:
     name: Security
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -61,7 +104,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-          cache-dependency-path: go.sum
 
       - name: Run govulncheck
         run: |

@@ -4,11 +4,24 @@ vars:
   PROJECT_ROOT:
     sh: pwd
   GOBIN: '{{.PROJECT_ROOT}}/bin'
-  GOLANGCI_LINT_BINARY: '{{.GOBIN}}/golangci-lint'
+  GOLANGCI_LINT_LOCAL_BINARY: '{{.GOBIN}}/golangci-lint'
   REQUIRED_GOLANGCI_LINT_VERSION:
-    sh: cat .golangci.version 2>/dev/null || echo "2.9.0"
+    sh: cat .golangci.version 2>/dev/null || echo "2.12.2"
+  GOLANGCI_LINT_BINARY:
+    sh: |
+      required="$(cat .golangci.version 2>/dev/null || echo "2.12.2")"
+      for candidate in "$(command -v golangci-lint 2>/dev/null || true)" "{{.GOLANGCI_LINT_LOCAL_BINARY}}"; do
+        [ -n "$candidate" ] || continue
+        [ -x "$candidate" ] || continue
+        version="$("$candidate" version --format short 2>/dev/null || "$candidate" version --short 2>/dev/null || true)"
+        if [ "$version" = "$required" ]; then
+          echo "$candidate"
+          exit 0
+        fi
+      done
+      echo "{{.GOLANGCI_LINT_LOCAL_BINARY}}"
   GOLANGCI_LINT_VERSION:
-    sh: >-
+    sh: |
       {{.GOLANGCI_LINT_BINARY}} version --format short 2>/dev/null ||
       {{.GOLANGCI_LINT_BINARY}} version --short 2>/dev/null ||
       echo "not-installed"
@@ -38,7 +51,7 @@ tasks:
       - echo "Available commands:"
       - echo "  all            - Run linting and tests with Redis"
       - echo "  test           - Run tests (requires Redis to be running)"
-      - echo "  test-with-redis - Start Redis, run tests, then cleanup"
+      - echo "  test-with-redis - Start Redis if needed, run tests"
       - echo "  redis          - Start Redis service"
       - echo "  redis-stop     - Stop Redis service"
       - echo "  lint           - Run linter"
@@ -59,10 +72,42 @@ tasks:
       - go mod tidy
 
   deps:update:
-    desc: Update all dependencies
+    desc: Update dependencies for the root module and any nested modules
     cmds:
-      - echo "Updating dependencies..."
-      - go get -u ./... && go mod tidy
+      - |
+        set -e
+        echo "Updating dependencies..."
+        MODULES=". $(find . -mindepth 2 -name go.mod \
+          -not -path '*/vendor/*' -not -path '*/.*' \
+          -exec dirname {} \; | sort)"
+        for dir in $MODULES; do
+          echo "==> $dir"
+          (
+            cd "$dir"
+            replaced=$(awk '
+              /^replace[[:space:]]+[(]/ { f=1; next }
+              /^replace[[:space:]]+[^(]/ { print $2 }
+              f && /^\)/ { f=0; next }
+              f && /=>/ { print $1 }
+            ' go.mod)
+            deps=$(awk '
+              /^require[[:space:]]+[^(]/ { print $2 }
+              /^require[[:space:]]*\(/ { f=1; next }
+              f && /^\)/ { f=0; next }
+              f && !/\/\/ indirect/ && NF >= 2 { print $1 }
+            ' go.mod | while read -r dep; do
+              echo "$replaced" | grep -qxF "$dep" || echo "$dep"
+            done | tr '\n' ' ')
+            if [ -n "$deps" ]; then
+              go get -u $deps
+            fi
+            go mod tidy
+          )
+        done
+        if [ -f go.work ]; then
+          echo "==> go work sync"
+          go work sync
+        fi
 
   test:
     desc: Run tests (requires Redis to be running)
@@ -115,14 +160,44 @@ tasks:
         {{.DOCKER_COMPOSE}} down
 
   test-with-redis:
-    desc: Start Redis, run tests, then cleanup
-    deps:
-      - redis
+    desc: Start Redis if needed, run tests, then clean up managed service
     cmds:
-      - echo "🧪 Running tests..."
-      - task: test
-      - task: vuln
-      - echo "✅ Tests completed!"
+      - |
+        set -e
+        if redis-cli ping 2>/dev/null | grep -q PONG; then
+          echo "✅ Redis is already running"
+        else
+          if [ "{{.DOCKER_COMPOSE}}" = "missing-docker-compose" ]; then
+            echo "❌ Docker Compose is required to start Redis" >&2
+            exit 127
+          fi
+
+          echo "🚀 Starting Redis service via Docker..."
+          {{.DOCKER_COMPOSE}} up -d
+          cleanup() {
+            echo "🧹 Stopping Redis service..."
+            {{.DOCKER_COMPOSE}} down
+          }
+          trap cleanup EXIT
+
+          echo "⏳ Waiting for Redis service to be ready..."
+          timeout=30
+          counter=0
+          until {{.DOCKER_COMPOSE}} exec redis redis-cli ping 2>/dev/null | grep -q PONG; do
+            sleep 1
+            counter=$((counter + 1))
+            if [ $counter -gt $timeout ]; then
+              echo "❌ Timeout waiting for Redis service" >&2
+              exit 1
+            fi
+          done
+          echo "✅ Redis service is ready"
+        fi
+
+        echo "🧪 Running tests..."
+        task test
+        task vuln
+        echo "✅ Tests completed!"
 
   lint:
     desc: Run all linters
@@ -133,13 +208,12 @@ tasks:
   install-golangci-lint:
     desc: Install golangci-lint with the required version
     cmds:
-      - mkdir -p {{.GOBIN}}
+      - mkdir -p "{{.GOBIN}}"
       - |
         if [ "{{.GOLANGCI_LINT_VERSION}}" != "{{.REQUIRED_GOLANGCI_LINT_VERSION}}" ]; then
-          echo "Installing golangci-lint v{{.REQUIRED_GOLANGCI_LINT_VERSION}} (current: {{.GOLANGCI_LINT_VERSION}})..."
-          curl -sSfL \
-            https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
-            | sh -s -- -b {{.GOBIN}} v{{.REQUIRED_GOLANGCI_LINT_VERSION}}
+          echo "Installing golangci-lint v{{.REQUIRED_GOLANGCI_LINT_VERSION}}..."
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
+            | sh -s -- -b "{{.GOBIN}}" v{{.REQUIRED_GOLANGCI_LINT_VERSION}}
           echo "golangci-lint v{{.REQUIRED_GOLANGCI_LINT_VERSION}} installed successfully"
         fi
     status:
@@ -152,7 +226,7 @@ tasks:
     cmds:
       - '{{.GOLANGCI_LINT_BINARY}} version'
       - echo "Running golangci-lint..."
-      - '{{.GOLANGCI_LINT_BINARY}} run --timeout=10m --path-prefix .'
+      - '{{.GOLANGCI_LINT_BINARY}} run --timeout=30m --concurrency=1 --path-prefix=.'
 
   tidy-lint:
     desc: Check if go.mod and go.sum are tidy
@@ -161,10 +235,6 @@ tasks:
       - go mod tidy
       - git diff --exit-code -- go.mod go.sum
 
-  markdownlint:
-    desc: Run markdownlint
-    cmds:
-      - markdownlint-cli2 "**/*.md"
 
   yamllint:
     desc: Run yamllint
@@ -175,3 +245,11 @@ tasks:
     desc: Run govulncheck
     cmds:
       - govulncheck ./...
+
+  fmt:
+    desc: Format Go code
+    deps:
+      - install-golangci-lint
+    cmds:
+      - echo "Formatting Go code..."
+      - '{{.GOLANGCI_LINT_BINARY}} fmt ./...'

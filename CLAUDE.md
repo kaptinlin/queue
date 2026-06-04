@@ -7,7 +7,7 @@ AI development guide for `github.com/kaptinlin/queue`.
 ## Commands
 
 ```bash
-task test-with-redis    # Start Redis, run integration tests, cleanup
+task test-with-redis    # Start Redis if needed, run integration tests
 task test               # Run integration tests; requires Redis on localhost:6379
 task lint               # golangci-lint + go mod tidy diff check
 task vet                # Static analysis
@@ -87,7 +87,7 @@ No `SPECS/` directory exists in the current tree. Treat source, tests, and featu
 
 ### Must Follow
 
-- Go 1.26.3 — use modern stdlib features when they reduce code and preserve clarity.
+- Go 1.26.4 — use modern stdlib features when they reduce code and preserve clarity.
 - Use `github.com/go-json-experiment/json` for payload and result encoding.
 - Return errors; do not panic in production code.
 - Use `%w` only for errors callers should inspect with `errors.Is` or `errors.As`.

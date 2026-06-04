@@ -1,6 +1,6 @@
 # Queue
 
-![Go](https://img.shields.io/badge/go-1.26.3-00ADD8?style=flat-square)
+![Go](https://img.shields.io/badge/go-1.26.4-00ADD8?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
 A Redis-backed distributed job queue library for Go with immutable jobs, runtime deliveries, retries, priorities, rate limiting, retention, scheduling, and operational inspection
@@ -22,7 +22,7 @@ A Redis-backed distributed job queue library for Go with immutable jobs, runtime
 go get github.com/kaptinlin/queue
 ```
 
-Requires **Go 1.26.3+** and Redis.
+Requires **Go 1.26.4+** and Redis.
 
 ## Quick Start
 
@@ -275,7 +275,7 @@ For AI development guidelines, see [AGENTS.md](AGENTS.md).
 ## Development
 
 ```bash
-task test-with-redis    # Start Redis, run integration tests, cleanup
+task test-with-redis    # Start Redis if needed, run integration tests
 task test               # Run tests; requires Redis on localhost:6379
 task lint               # golangci-lint + go mod tidy diff check
 task vet                # Static analysis

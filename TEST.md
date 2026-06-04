@@ -1,12 +1,12 @@
 # Testing Guide
 
-## Available Make Targets
+## Available Task Commands
 
-We provide several Make targets for testing convenience:
+We provide several Task commands for testing convenience:
 
 ```bash
 # View all available commands
-make help
+task help
 ```
 
 ## Running Tests
@@ -16,7 +16,7 @@ make help
 Use the automated test target that handles Redis setup and cleanup:
 
 ```bash
-# Start Redis, run tests, then cleanup automatically
+# Start Redis if needed, run tests, then clean up any managed Redis service
 task test-with-redis
 ```
 
@@ -40,7 +40,7 @@ task redis-stop
 You can also run tests directly if Redis is already running:
 
 ```bash
-cd tests && go test -v
+cd tests && go test -v -race
 ```
 
 ## Managing Redis Service
