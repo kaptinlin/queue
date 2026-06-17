@@ -18,12 +18,17 @@ type Delivery struct {
 	maxRetry     int
 	deadline     *time.Time
 	rawPayload   []byte
-	resultWriter *asynq.ResultWriter
+	resultWriter deliveryResultWriter
+}
+
+type deliveryResultWriter interface {
+	Write([]byte) (int, error)
+	TaskID() string
 }
 
 func newDeliveryFromTask(ctx context.Context, task *asynq.Task, queue string) (*Delivery, error) {
 	if task == nil {
-		return nil, ErrInvalidAsynqTask
+		return nil, ErrInvalidDelivery
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -135,7 +140,7 @@ func (d *Delivery) DecodePayload(v any) error {
 
 func (d *Delivery) payloadBytes() ([]byte, error) {
 	if d == nil {
-		return nil, ErrInvalidAsynqTask
+		return nil, ErrInvalidDelivery
 	}
 	return append([]byte{}, d.rawPayload...), nil
 }

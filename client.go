@@ -33,11 +33,6 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 	if redisConfig == nil {
 		return nil, ErrInvalidRedisConfig
 	}
-	if err := redisConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid redis config: %w", err)
-	}
-
-	asynqClient := asynq.NewClient(redisConfig.ToAsynqRedisOpt())
 
 	config := &clientConfig{
 		Logger:    NewDefaultLogger(),
@@ -50,6 +45,11 @@ func NewClient(redisConfig *RedisConfig, opts ...ClientOption) (*Client, error) 
 	if config.Logger == nil {
 		config.Logger = NewDefaultLogger()
 	}
+	if err := config.validate(); err != nil {
+		return nil, fmt.Errorf("invalid client config: %w", err)
+	}
+
+	asynqClient := asynq.NewClient(asynqRedisOpt(redisConfig))
 
 	return &Client{
 		asynqClient:  asynqClient,
@@ -68,6 +68,13 @@ type clientOption func(*clientConfig)
 
 func (f clientOption) applyClientOption(config *clientConfig) {
 	f(config)
+}
+
+func (c *clientConfig) validate() error {
+	if c.Retention < 0 {
+		return fmt.Errorf("%w: retention cannot be negative", ErrInvalidClientOptions)
+	}
+	return nil
 }
 
 // WithClientLogger sets a custom logger for the client.
@@ -103,18 +110,11 @@ func (c *Client) Enqueue(jobType string, payload any, opts ...JobOption) (string
 
 // EnqueueJob adds a job to the queue.
 func (c *Client) EnqueueJob(job *Job) (string, error) {
-	task, opts, err := job.ConvertToAsynqTask()
+	options := effectiveJobOptions(job.Options(), c.retention)
+	task, opts, err := job.convertToAsynqTask(options)
 	if err != nil {
 		c.handleJobError(err, job, "failed to convert job to task")
 		return "", err
-	}
-
-	retention := job.Options().Retention
-	if retention <= 0 {
-		retention = c.retention
-	}
-	if retention > 0 {
-		opts = append(opts, asynq.Retention(retention))
 	}
 
 	result, err := c.asynqClient.Enqueue(task, opts...)
@@ -124,6 +124,14 @@ func (c *Client) EnqueueJob(job *Job) (string, error) {
 	}
 
 	return result.ID, nil
+}
+
+func effectiveJobOptions(options JobOptions, clientRetention time.Duration) JobOptions {
+	options = cloneJobOptions(options)
+	if options.Retention <= 0 {
+		options.Retention = clientRetention
+	}
+	return options
 }
 
 // handleJobError logs the error and calls the custom error handler if one is registered.

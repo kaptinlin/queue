@@ -46,12 +46,40 @@ func (h *recordingWorkerErrorHandler) HandleError(err error, delivery *Delivery)
 	h.delivery = delivery
 }
 
+type failingResultWriter struct {
+	err error
+}
+
+func (w failingResultWriter) Write([]byte) (int, error) {
+	return 0, w.err
+}
+
+func (w failingResultWriter) TaskID() string {
+	return "test-task"
+}
+
+func retentionDurations(t *testing.T, opts []asynq.Option) []time.Duration {
+	t.Helper()
+
+	var durations []time.Duration
+	for _, opt := range opts {
+		if opt.Type() != asynq.RetentionOpt {
+			continue
+		}
+		retention, ok := opt.Value().(time.Duration)
+		require.True(t, ok, "Retention option value type = %T, want time.Duration", opt.Value())
+		durations = append(durations, retention)
+	}
+	return durations
+}
+
 func TestNewClient_ValidatesConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name        string
 		redisConfig *RedisConfig
+		options     []ClientOption
 		wantErr     error
 	}{
 		{
@@ -60,12 +88,10 @@ func TestNewClient_ValidatesConfig(t *testing.T) {
 			wantErr:     ErrInvalidRedisConfig,
 		},
 		{
-			name: "invalid config",
-			redisConfig: &RedisConfig{
-				Network: "tcp",
-				Addr:    "",
-			},
-			wantErr: ErrRedisEmptyAddress,
+			name:        "negative client retention",
+			redisConfig: DefaultRedisConfig(),
+			options:     []ClientOption{WithClientRetention(-time.Second)},
+			wantErr:     ErrInvalidClientOptions,
 		},
 	}
 
@@ -73,7 +99,7 @@ func TestNewClient_ValidatesConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			client, err := NewClient(tt.redisConfig)
+			client, err := NewClient(tt.redisConfig, tt.options...)
 			assert.Nil(t, client)
 			assert.ErrorIs(t, err, tt.wantErr)
 		})
@@ -140,6 +166,51 @@ func TestClientEnqueueJob_ConversionErrorReportsHandler(t *testing.T) {
 	assert.NotEmpty(t, logger.errors)
 }
 
+func TestEffectiveJobOptions_Retention(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name            string
+		options         JobOptions
+		clientRetention time.Duration
+		wantRetention   []time.Duration
+	}{
+		{
+			name:            "no retention",
+			options:         JobOptions{Queue: DefaultQueue},
+			clientRetention: 0,
+		},
+		{
+			name:            "client default",
+			options:         JobOptions{Queue: DefaultQueue},
+			clientRetention: time.Hour,
+			wantRetention:   []time.Duration{time.Hour},
+		},
+		{
+			name: "job retention overrides client default",
+			options: JobOptions{
+				Queue:     DefaultQueue,
+				Retention: 2 * time.Hour,
+			},
+			clientRetention: time.Hour,
+			wantRetention:   []time.Duration{2 * time.Hour},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			options := effectiveJobOptions(tt.options, tt.clientRetention)
+			opts := asynqOptionsFromJobOptions(options)
+
+			if diff := cmp.Diff(tt.wantRetention, retentionDurations(t, opts)); diff != "" {
+				t.Errorf("retention options mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+}
+
 func TestWorkerOptionsApplyToConfig(t *testing.T) {
 	t.Parallel()
 
@@ -152,7 +223,7 @@ func TestWorkerOptionsApplyToConfig(t *testing.T) {
 
 	WithWorkerLogger(logger).applyWorkerOption(config)
 	WithWorkerStopTimeout(5 * time.Second).applyWorkerOption(config)
-	WithWorkerRateLimiter(limiter).applyWorkerOption(config)
+	WithWorkerLocalRateLimiter(limiter).applyWorkerOption(config)
 	WithWorkerConcurrency(4).applyWorkerOption(config)
 	WithWorkerQueue("low", 1).applyWorkerOption(config)
 	WithWorkerQueues(queues).applyWorkerOption(config)
@@ -197,18 +268,16 @@ func TestNewWorker_ValidatesConfig(t *testing.T) {
 			wantErr:     ErrInvalidRedisConfig,
 		},
 		{
-			name: "invalid redis config",
-			redisConfig: &RedisConfig{
-				Network: "tcp",
-				Addr:    "",
-			},
-			wantErr: ErrRedisEmptyAddress,
-		},
-		{
 			name:        "invalid worker config",
 			redisConfig: DefaultRedisConfig(),
 			options:     []WorkerOption{WithWorkerConcurrency(0)},
 			wantErr:     ErrInvalidWorkerConcurrency,
+		},
+		{
+			name:        "negative stop timeout",
+			redisConfig: DefaultRedisConfig(),
+			options:     []WorkerOption{WithWorkerStopTimeout(-time.Second)},
+			wantErr:     ErrInvalidWorkerStopTimeout,
 		},
 	}
 
@@ -234,19 +303,19 @@ func TestNewWorker_NilLoggerUsesDefault(t *testing.T) {
 func TestSchedulerOptionsApplyToConfig(t *testing.T) {
 	t.Parallel()
 
-	provider := NewMemoryConfigProvider()
+	store := NewMemoryScheduleStore()
 	logger := &recordingLogger{}
 	loc := time.FixedZone("test", 3600)
 	options := &schedulerOptions{}
 
 	WithSyncInterval(5 * time.Second).applySchedulerOption(options)
 	WithSchedulerLocation(loc).applySchedulerOption(options)
-	WithConfigProvider(provider).applySchedulerOption(options)
+	WithScheduleStore(store).applySchedulerOption(options)
 	WithSchedulerLogger(logger).applySchedulerOption(options)
 
 	assert.Equal(t, 5*time.Second, options.SyncInterval)
 	assert.Same(t, loc, options.Location)
-	assert.Same(t, provider, options.ConfigProvider)
+	assert.Same(t, store, options.Store)
 	assert.Same(t, logger, options.Logger)
 }
 
@@ -262,14 +331,6 @@ func TestNewScheduler_ValidatesConfig(t *testing.T) {
 			name:        "nil config",
 			redisConfig: nil,
 			wantErr:     ErrInvalidRedisConfig,
-		},
-		{
-			name: "invalid config",
-			redisConfig: &RedisConfig{
-				Network: "tcp",
-				Addr:    "",
-			},
-			wantErr: ErrRedisEmptyAddress,
 		},
 	}
 
@@ -301,46 +362,50 @@ func TestNewScheduler_InvalidSyncInterval(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidSyncInterval)
 }
 
-func TestNewScheduler_AppliesConfigProvider(t *testing.T) {
+func TestNewScheduler_AppliesScheduleStore(t *testing.T) {
 	t.Parallel()
 
-	provider := NewMemoryConfigProvider()
-	scheduler, err := NewScheduler(DefaultRedisConfig(), WithConfigProvider(provider))
+	store := NewMemoryScheduleStore()
+	scheduler, err := NewScheduler(DefaultRedisConfig(), WithScheduleStore(store))
 	require.NoError(t, err)
 
-	id, err := scheduler.RegisterCron("cron:test", "*/5 * * * *", "cron:test", nil)
+	job := mustNewJob(t, "cron:test", nil)
+	id, err := scheduler.RegisterCron(t.Context(), "cron:test", "*/5 * * * *", job)
 	require.NoError(t, err)
 	assert.NotEmpty(t, id)
 
-	configs, err := provider.GetConfigs()
+	schedules, err := store.List(t.Context())
 	require.NoError(t, err)
-	assert.Len(t, configs, 1)
+	require.Len(t, schedules, 1)
+	assert.Equal(t, ScheduleCron, schedules[0].Kind)
 }
 
-func TestSchedulerRegisterMethodsUseConfigProvider(t *testing.T) {
+func TestSchedulerRegisterMethodsUseScheduleStore(t *testing.T) {
 	t.Parallel()
 
-	provider := NewMemoryConfigProvider()
-	scheduler, err := NewScheduler(DefaultRedisConfig(), WithConfigProvider(provider))
+	store := NewMemoryScheduleStore()
+	scheduler, err := NewScheduler(DefaultRedisConfig(), WithScheduleStore(store))
 	require.NoError(t, err)
 
-	_, err = scheduler.RegisterCron("bad", "wrong cron", "bad", nil)
+	job := mustNewJob(t, "schedule:test", nil)
+
+	_, err = scheduler.RegisterCron(t.Context(), "bad", "wrong cron", job)
 	assert.ErrorIs(t, err, ErrInvalidCronSpec)
 
-	cronID, err := scheduler.RegisterCron("cron:test", "*/5 * * * *", "cron:test", nil)
+	cronID, err := scheduler.RegisterCron(t.Context(), "cron:test", "*/5 * * * *", job)
 	require.NoError(t, err)
 	assert.NotEmpty(t, cronID)
 
-	periodicID, err := scheduler.RegisterPeriodic("periodic:test", 2*time.Second, "periodic:test", nil)
+	periodicID, err := scheduler.RegisterInterval(t.Context(), "periodic:test", 2*time.Second, job)
 	require.NoError(t, err)
 	assert.NotEmpty(t, periodicID)
 
-	configs, err := provider.GetConfigs()
+	schedules, err := store.List(t.Context())
 	require.NoError(t, err)
-	assert.Len(t, configs, 2)
+	assert.Len(t, schedules, 2)
 
-	require.NoError(t, scheduler.UnregisterCronJob(cronID))
-	assert.ErrorIs(t, scheduler.UnregisterCronJob(cronID), ErrScheduleNotFound)
+	require.NoError(t, scheduler.Unregister(t.Context(), cronID))
+	assert.ErrorIs(t, scheduler.Unregister(t.Context(), cronID), ErrScheduleNotFound)
 }
 
 func TestRedisConfigValidateBoundaries(t *testing.T) {
@@ -355,92 +420,92 @@ func TestRedisConfigValidateBoundaries(t *testing.T) {
 		{
 			name: "valid tcp address",
 			config: RedisConfig{
-				Network: "tcp",
-				Addr:    "localhost:6379",
+				network: "tcp",
+				addr:    "localhost:6379",
 			},
 		},
 		{
 			name: "empty address",
 			config: RedisConfig{
-				Network: "tcp",
-				Addr:    "",
+				network: "tcp",
+				addr:    "",
 			},
 			wantErr: ErrRedisEmptyAddress,
 		},
 		{
 			name: "unsupported network",
 			config: RedisConfig{
-				Network: "udp",
-				Addr:    "localhost:6379",
+				network: "udp",
+				addr:    "localhost:6379",
 			},
 			wantErr: ErrRedisUnsupportedNetwork,
 		},
 		{
 			name: "rediss requires tls",
 			config: RedisConfig{
-				Network: "tcp",
-				Addr:    "rediss://localhost:6379",
+				network: "tcp",
+				addr:    "rediss://localhost:6379",
 			},
 			wantErr: ErrRedisTLSRequired,
 		},
 		{
 			name: "rediss still requires host port syntax",
 			config: RedisConfig{
-				Network:   "tcp",
-				Addr:      "rediss://localhost:6379",
-				TLSConfig: tlsConfig,
+				network:   "tcp",
+				addr:      "rediss://localhost:6379",
+				tlsConfig: tlsConfig,
 			},
 			wantErr: ErrRedisInvalidAddress,
 		},
 		{
 			name: "unix socket skips host port validation",
 			config: RedisConfig{
-				Network: "unix",
-				Addr:    "/tmp/redis.sock",
+				network: "unix",
+				addr:    "/tmp/redis.sock",
 			},
 		},
 		{
 			name: "negative db",
 			config: RedisConfig{
-				Network: "tcp",
-				Addr:    "localhost:6379",
-				DB:      -1,
+				network: "tcp",
+				addr:    "localhost:6379",
+				db:      -1,
 			},
 			wantErr: ErrRedisInvalidDB,
 		},
 		{
 			name: "negative pool size",
 			config: RedisConfig{
-				Network:  "tcp",
-				Addr:     "localhost:6379",
-				PoolSize: -1,
+				network:  "tcp",
+				addr:     "localhost:6379",
+				poolSize: -1,
 			},
 			wantErr: ErrRedisInvalidPoolSize,
 		},
 		{
 			name: "negative dial timeout",
 			config: RedisConfig{
-				Network:     "tcp",
-				Addr:        "localhost:6379",
-				DialTimeout: -time.Second,
+				network:     "tcp",
+				addr:        "localhost:6379",
+				dialTimeout: -time.Second,
 			},
 			wantErr: ErrRedisInvalidTimeout,
 		},
 		{
 			name: "negative read timeout",
 			config: RedisConfig{
-				Network:     "tcp",
-				Addr:        "localhost:6379",
-				ReadTimeout: -time.Second,
+				network:     "tcp",
+				addr:        "localhost:6379",
+				readTimeout: -time.Second,
 			},
 			wantErr: ErrRedisInvalidTimeout,
 		},
 		{
 			name: "negative write timeout",
 			config: RedisConfig{
-				Network:      "tcp",
-				Addr:         "localhost:6379",
-				WriteTimeout: -time.Second,
+				network:      "tcp",
+				addr:         "localhost:6379",
+				writeTimeout: -time.Second,
 			},
 			wantErr: ErrRedisInvalidTimeout,
 		},
@@ -450,7 +515,7 @@ func TestRedisConfigValidateBoundaries(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := tt.config.Validate()
+			err := tt.config.validate()
 			if tt.wantErr != nil {
 				assert.ErrorIs(t, err, tt.wantErr)
 				return
@@ -460,11 +525,11 @@ func TestRedisConfigValidateBoundaries(t *testing.T) {
 	}
 }
 
-func TestRedisConfigOptionsAndAsynqConversion(t *testing.T) {
+func TestRedisConfigOptionsAndAsynqAdapter(t *testing.T) {
 	t.Parallel()
 
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
-	config := NewRedisConfig(
+	config, err := NewRedisConfig(
 		WithRedisAddress("redis.example:6380"),
 		WithRedisUsername("user"),
 		WithRedisPassword("secret"),
@@ -475,7 +540,8 @@ func TestRedisConfigOptionsAndAsynqConversion(t *testing.T) {
 		WithRedisPoolSize(12),
 		WithRedisTLSConfig(tlsConfig),
 	)
-	got := config.ToAsynqRedisOpt()
+	require.NoError(t, err)
+	got := asynqRedisOpt(config)
 	type redisOptSnapshot struct {
 		Network      string
 		Addr         string
@@ -575,17 +641,17 @@ func TestNewJob_ValidationErrors(t *testing.T) {
 	}
 }
 
-func TestConvertToAsynqTask_NilJob(t *testing.T) {
+func TestAsynqTaskFromJob_NilJob(t *testing.T) {
 	t.Parallel()
 
 	var job *Job
-	task, opts, err := job.ConvertToAsynqTask()
+	task, opts, err := job.convertToAsynqTask(JobOptions{})
 	assert.Nil(t, task)
 	assert.Nil(t, opts)
 	assert.ErrorIs(t, err, ErrInvalidJob)
 }
 
-func TestConvertToAsynqOptions_AllOptions(t *testing.T) {
+func TestAsynqOptionsFromJobOptions_AllOptions(t *testing.T) {
 	t.Parallel()
 
 	scheduleAt := time.Now().Add(time.Hour)
@@ -599,7 +665,7 @@ func TestConvertToAsynqOptions_AllOptions(t *testing.T) {
 		WithRetention(time.Hour),
 	)
 
-	opts := job.ConvertToAsynqOptions()
+	opts := asynqOptionsFromJobOptions(job.Options())
 
 	assert.Len(t, opts, 6)
 }
@@ -625,7 +691,7 @@ func TestHandlerOptionsAndMiddleware(t *testing.T) {
 			calls = append(calls, "handler")
 			return nil
 		},
-		WithRateLimiter(limiter),
+		WithLocalRateLimiter(limiter),
 		WithJobQueue("critical"),
 		WithJobTimeout(5*time.Second),
 		WithRetryDelayFunc(retryDelay),
@@ -645,7 +711,7 @@ func TestHandlerOptionsAndMiddleware(t *testing.T) {
 	}
 }
 
-func TestConvertToAsynqTask_SerializationError(t *testing.T) {
+func TestNewJob_SerializationError(t *testing.T) {
 	t.Parallel()
 
 	payload := make(chan int)
@@ -702,12 +768,27 @@ func TestWriteResult_SerializationError(t *testing.T) {
 	assert.ErrorIs(t, err, ErrSerializationFailure)
 }
 
-func TestManagerListJobsByStateRejectsInvalidState(t *testing.T) {
+func TestWriteResult_WriterFailure(t *testing.T) {
+	t.Parallel()
+
+	writerErr := errors.New("writer unavailable")
+	delivery := &Delivery{resultWriter: failingResultWriter{err: writerErr}}
+
+	err := delivery.WriteResult("result")
+
+	assert.ErrorIs(t, err, ErrFailedToWriteResult)
+	assert.ErrorIs(t, err, writerErr)
+}
+
+func TestManagerListJobsRejectsInvalidState(t *testing.T) {
 	t.Parallel()
 
 	manager := &Manager{}
 
-	jobs, err := manager.ListJobsByState("default", JobState("unknown"), 10, 1)
+	jobs, err := manager.ListJobs(JobQuery{
+		Queue: "default",
+		State: JobState("unknown"),
+	})
 
 	assert.Nil(t, jobs)
 	assert.ErrorIs(t, err, ErrInvalidJobState)
@@ -798,8 +879,11 @@ func TestRedisInfo_UnsupportedClient(t *testing.T) {
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close())
 	})
-	inspector := asynq.NewInspector(DefaultRedisConfig().ToAsynqRedisOpt())
-	m, err := NewManager(client, inspector)
+	inspector := asynq.NewInspector(asynqRedisOpt(DefaultRedisConfig()))
+	t.Cleanup(func() {
+		assert.NoError(t, inspector.Close())
+	})
+	m, err := newManager(client, inspector)
 	require.NoError(t, err)
 
 	_, err = m.RedisInfo(t.Context())
@@ -810,10 +894,10 @@ func TestRedisValidate_UnixNetwork(t *testing.T) {
 	t.Parallel()
 
 	cfg := &RedisConfig{
-		Network: "unix",
-		Addr:    "/tmp/redis.sock",
+		network: "unix",
+		addr:    "/tmp/redis.sock",
 	}
-	err := cfg.Validate()
+	err := cfg.validate()
 	assert.NoError(t, err)
 }
 
@@ -872,32 +956,29 @@ func TestNewDeliveryFromTask_NilTask(t *testing.T) {
 
 	delivery, err := newDeliveryFromTask(t.Context(), nil, "default")
 	assert.Nil(t, delivery)
-	assert.ErrorIs(t, err, ErrInvalidAsynqTask)
+	assert.ErrorIs(t, err, ErrInvalidDelivery)
 }
 
-func TestConvertToAsynqOptions_NoOptions(t *testing.T) {
+func TestAsynqOptionsFromJobOptions_NoOptions(t *testing.T) {
 	t.Parallel()
 
-	job := &Job{options: JobOptions{}}
-	opts := job.ConvertToAsynqOptions()
+	opts := asynqOptionsFromJobOptions(JobOptions{})
 	assert.Empty(t, opts)
 }
 
-func TestConvertToAsynqOptions_ZeroScheduleAt(t *testing.T) {
+func TestAsynqOptionsFromJobOptions_ZeroScheduleAt(t *testing.T) {
 	t.Parallel()
 
 	zero := time.Time{}
-	job := &Job{options: JobOptions{ScheduleAt: &zero}}
-	opts := job.ConvertToAsynqOptions()
+	opts := asynqOptionsFromJobOptions(JobOptions{ScheduleAt: &zero})
 	assert.Empty(t, opts)
 }
 
-func TestConvertToAsynqOptions_ZeroDeadline(t *testing.T) {
+func TestAsynqOptionsFromJobOptions_ZeroDeadline(t *testing.T) {
 	t.Parallel()
 
 	zero := time.Time{}
-	job := &Job{options: JobOptions{Deadline: &zero}}
-	opts := job.ConvertToAsynqOptions()
+	opts := asynqOptionsFromJobOptions(JobOptions{Deadline: &zero})
 	assert.Empty(t, opts)
 }
 
@@ -920,8 +1001,11 @@ func TestRedisInfo_StandardClient(t *testing.T) {
 	t.Cleanup(func() {
 		assert.NoError(t, client.Close())
 	})
-	inspector := asynq.NewInspector(DefaultRedisConfig().ToAsynqRedisOpt())
-	m, err := NewManager(client, inspector)
+	inspector := asynq.NewInspector(asynqRedisOpt(DefaultRedisConfig()))
+	t.Cleanup(func() {
+		assert.NoError(t, inspector.Close())
+	})
+	m, err := newManager(client, inspector)
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -932,39 +1016,67 @@ func TestRedisInfo_StandardClient(t *testing.T) {
 	assert.NotErrorIs(t, err, ErrRedisClientNotSupported)
 }
 
-func TestMemoryConfigProvider_RegisterDuplicate(t *testing.T) {
+func TestMemoryScheduleStore_PutDuplicate(t *testing.T) {
 	t.Parallel()
 
-	p := NewMemoryConfigProvider()
+	store := NewMemoryScheduleStore()
 	job := mustNewJob(t, "test", nil)
-	_, err := p.RegisterCronJob("test-schedule", "* * * * *", job)
+	schedule := Schedule{
+		ID:       "test-schedule",
+		Kind:     ScheduleCron,
+		CronSpec: "* * * * *",
+		Job:      job,
+		Enabled:  true,
+	}
+	err := store.Put(t.Context(), schedule)
 	require.NoError(t, err)
 
-	id, err := p.RegisterCronJob("test-schedule", "* * * * *", job)
-
-	assert.Empty(t, id)
+	err = store.Put(t.Context(), schedule)
 	assert.ErrorIs(t, err, ErrScheduleAlreadyExists)
 }
 
-func TestGetConfigs_WithEntries(t *testing.T) {
+func TestAsynqScheduleProvider_GetConfigs(t *testing.T) {
 	t.Parallel()
 
-	p := NewMemoryConfigProvider()
-	j := mustNewJob(t, "test", nil)
-	_, err := p.RegisterCronJob("test-schedule", "* * * * *", j)
+	store := NewMemoryScheduleStore()
+	job := mustNewJob(t, "test", nil)
+	err := store.Put(t.Context(), Schedule{
+		ID:       "cron-schedule",
+		Kind:     ScheduleCron,
+		CronSpec: "* * * * *",
+		Job:      job,
+		Enabled:  true,
+	})
+	require.NoError(t, err)
+	err = store.Put(t.Context(), Schedule{
+		ID:       "interval-schedule",
+		Kind:     ScheduleInterval,
+		Interval: 5 * time.Second,
+		Job:      job,
+		Enabled:  true,
+	})
 	require.NoError(t, err)
 
-	configs, err := p.GetConfigs()
+	provider := &asynqScheduleProvider{store: store, timeout: time.Second}
+	configs, err := provider.GetConfigs()
 	require.NoError(t, err)
-	assert.Len(t, configs, 1)
+	require.Len(t, configs, 2)
 	assert.Equal(t, "* * * * *", configs[0].Cronspec)
 	assert.Equal(t, "test", configs[0].Task.Type())
+	assert.Equal(t, "@every 5s", configs[1].Cronspec)
 }
 
-func TestRegisterCronJob_NilJob(t *testing.T) {
+func TestMemoryScheduleStore_PutValidation(t *testing.T) {
 	t.Parallel()
 
-	p := NewMemoryConfigProvider()
-	_, err := p.RegisterCronJob("test-schedule", "* * * * *", nil)
+	store := NewMemoryScheduleStore()
+	err := store.Put(t.Context(), Schedule{
+		ID:       "test-schedule",
+		Kind:     ScheduleCron,
+		CronSpec: "* * * * *",
+	})
 	assert.ErrorIs(t, err, ErrInvalidJob)
+
+	err = store.Put(nil, Schedule{})
+	assert.ErrorIs(t, err, ErrInvalidContext)
 }

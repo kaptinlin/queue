@@ -13,88 +13,172 @@ import (
 
 // RedisConfig holds the configuration for the Redis connection.
 type RedisConfig struct {
-	Network      string
-	Addr         string
-	Username     string
-	Password     string
-	DB           int
-	DialTimeout  time.Duration
-	ReadTimeout  time.Duration
-	WriteTimeout time.Duration
-	PoolSize     int
-	TLSConfig    *tls.Config
+	network      string
+	addr         string
+	username     string
+	password     string
+	db           int
+	dialTimeout  time.Duration
+	readTimeout  time.Duration
+	writeTimeout time.Duration
+	poolSize     int
+	tlsConfig    *tls.Config
 }
 
-// Validate checks if the RedisConfig fields are correctly set.
-func (c *RedisConfig) Validate() error {
-	if c.Addr == "" {
+func (c *RedisConfig) validate() error {
+	if c == nil {
+		return ErrInvalidRedisConfig
+	}
+	if c.addr == "" {
 		return ErrRedisEmptyAddress
 	}
-	if c.Network != "tcp" && c.Network != "unix" {
-		return fmt.Errorf("%w: %q", ErrRedisUnsupportedNetwork, c.Network)
+	if c.network != "tcp" && c.network != "unix" {
+		return fmt.Errorf("%w: %q", ErrRedisUnsupportedNetwork, c.network)
 	}
-	if c.TLSConfig == nil && strings.HasPrefix(c.Addr, "rediss://") {
+	if c.tlsConfig == nil && strings.HasPrefix(c.addr, "rediss://") {
 		return ErrRedisTLSRequired
 	}
-	if _, _, err := net.SplitHostPort(c.Addr); err != nil && c.Network == "tcp" {
+	if _, _, err := net.SplitHostPort(c.addr); err != nil && c.network == "tcp" {
 		return fmt.Errorf("%w: %w", ErrRedisInvalidAddress, err)
 	}
-	if c.DB < 0 {
-		return fmt.Errorf("%w: %d", ErrRedisInvalidDB, c.DB)
+	if c.db < 0 {
+		return fmt.Errorf("%w: %d", ErrRedisInvalidDB, c.db)
 	}
-	if c.PoolSize < 0 {
-		return fmt.Errorf("%w: %d", ErrRedisInvalidPoolSize, c.PoolSize)
+	if c.poolSize < 0 {
+		return fmt.Errorf("%w: %d", ErrRedisInvalidPoolSize, c.poolSize)
 	}
-	if c.DialTimeout < 0 {
-		return fmt.Errorf("%w: dial timeout %s", ErrRedisInvalidTimeout, c.DialTimeout)
+	if c.dialTimeout < 0 {
+		return fmt.Errorf("%w: dial timeout %s", ErrRedisInvalidTimeout, c.dialTimeout)
 	}
-	if c.ReadTimeout < 0 {
-		return fmt.Errorf("%w: read timeout %s", ErrRedisInvalidTimeout, c.ReadTimeout)
+	if c.readTimeout < 0 {
+		return fmt.Errorf("%w: read timeout %s", ErrRedisInvalidTimeout, c.readTimeout)
 	}
-	if c.WriteTimeout < 0 {
-		return fmt.Errorf("%w: write timeout %s", ErrRedisInvalidTimeout, c.WriteTimeout)
+	if c.writeTimeout < 0 {
+		return fmt.Errorf("%w: write timeout %s", ErrRedisInvalidTimeout, c.writeTimeout)
 	}
 	return nil
 }
 
 // NewRedisConfig creates a new RedisConfig with the given options applied.
-func NewRedisConfig(opts ...RedisOption) *RedisConfig {
+func NewRedisConfig(opts ...RedisOption) (*RedisConfig, error) {
 	config := DefaultRedisConfig()
 	for _, opt := range opts {
 		opt.applyRedisOption(config)
 	}
-	return config
+	if err := config.validate(); err != nil {
+		return nil, err
+	}
+	return config, nil
 }
 
 // DefaultRedisConfig returns a RedisConfig initialized with default values.
 func DefaultRedisConfig() *RedisConfig {
 	return &RedisConfig{
-		Network:      "tcp",
-		Addr:         "localhost:6379",
-		Username:     "",
-		Password:     "",
-		DB:           0,
-		DialTimeout:  5 * time.Second,
-		ReadTimeout:  3 * time.Second,
-		WriteTimeout: 3 * time.Second,
-		PoolSize:     runtime.NumCPU() * 10,
-		TLSConfig:    nil,
+		network:      "tcp",
+		addr:         "localhost:6379",
+		username:     "",
+		password:     "",
+		db:           0,
+		dialTimeout:  5 * time.Second,
+		readTimeout:  3 * time.Second,
+		writeTimeout: 3 * time.Second,
+		poolSize:     runtime.NumCPU() * 10,
+		tlsConfig:    nil,
 	}
 }
 
-// ToAsynqRedisOpt converts RedisConfig to asynq.RedisClientOpt.
-func (c *RedisConfig) ToAsynqRedisOpt() asynq.RedisClientOpt {
+// Network returns the Redis network.
+func (c *RedisConfig) Network() string {
+	if c == nil {
+		return ""
+	}
+	return c.network
+}
+
+// Addr returns the Redis server address.
+func (c *RedisConfig) Addr() string {
+	if c == nil {
+		return ""
+	}
+	return c.addr
+}
+
+// Username returns the Redis username.
+func (c *RedisConfig) Username() string {
+	if c == nil {
+		return ""
+	}
+	return c.username
+}
+
+// Password returns the Redis password.
+func (c *RedisConfig) Password() string {
+	if c == nil {
+		return ""
+	}
+	return c.password
+}
+
+// DB returns the Redis database number.
+func (c *RedisConfig) DB() int {
+	if c == nil {
+		return 0
+	}
+	return c.db
+}
+
+// DialTimeout returns the Redis dial timeout.
+func (c *RedisConfig) DialTimeout() time.Duration {
+	if c == nil {
+		return 0
+	}
+	return c.dialTimeout
+}
+
+// ReadTimeout returns the Redis read timeout.
+func (c *RedisConfig) ReadTimeout() time.Duration {
+	if c == nil {
+		return 0
+	}
+	return c.readTimeout
+}
+
+// WriteTimeout returns the Redis write timeout.
+func (c *RedisConfig) WriteTimeout() time.Duration {
+	if c == nil {
+		return 0
+	}
+	return c.writeTimeout
+}
+
+// PoolSize returns the Redis connection pool size.
+func (c *RedisConfig) PoolSize() int {
+	if c == nil {
+		return 0
+	}
+	return c.poolSize
+}
+
+// TLSConfig returns a copy of the Redis TLS configuration.
+func (c *RedisConfig) TLSConfig() *tls.Config {
+	if c == nil {
+		return nil
+	}
+	return cloneTLSConfig(c.tlsConfig)
+}
+
+func asynqRedisOpt(c *RedisConfig) asynq.RedisClientOpt {
 	return asynq.RedisClientOpt{
-		Network:      c.Network,
-		Addr:         c.Addr,
-		Username:     c.Username,
-		Password:     c.Password,
-		DB:           c.DB,
-		DialTimeout:  c.DialTimeout,
-		ReadTimeout:  c.ReadTimeout,
-		WriteTimeout: c.WriteTimeout,
-		PoolSize:     c.PoolSize,
-		TLSConfig:    cloneTLSConfig(c.TLSConfig),
+		Network:      c.network,
+		Addr:         c.addr,
+		Username:     c.username,
+		Password:     c.password,
+		DB:           c.db,
+		DialTimeout:  c.dialTimeout,
+		ReadTimeout:  c.readTimeout,
+		WriteTimeout: c.writeTimeout,
+		PoolSize:     c.poolSize,
+		TLSConfig:    cloneTLSConfig(c.tlsConfig),
 	}
 }
 
@@ -109,66 +193,73 @@ func (f redisOption) applyRedisOption(config *RedisConfig) {
 	f(config)
 }
 
+// WithRedisNetwork sets the Redis network.
+func WithRedisNetwork(network string) RedisOption {
+	return redisOption(func(c *RedisConfig) {
+		c.network = network
+	})
+}
+
 // WithRedisAddress sets the Redis server address.
 func WithRedisAddress(addr string) RedisOption {
 	return redisOption(func(c *RedisConfig) {
-		c.Addr = addr
+		c.addr = addr
 	})
 }
 
 // WithRedisUsername sets the username for Redis authentication.
 func WithRedisUsername(username string) RedisOption {
 	return redisOption(func(c *RedisConfig) {
-		c.Username = username
+		c.username = username
 	})
 }
 
 // WithRedisPassword sets the password for Redis authentication.
 func WithRedisPassword(password string) RedisOption {
 	return redisOption(func(c *RedisConfig) {
-		c.Password = password
+		c.password = password
 	})
 }
 
 // WithRedisDB sets the Redis database number.
 func WithRedisDB(db int) RedisOption {
 	return redisOption(func(c *RedisConfig) {
-		c.DB = db
+		c.db = db
 	})
 }
 
 // WithRedisTLSConfig sets the TLS configuration for the Redis connection.
 func WithRedisTLSConfig(tlsConfig *tls.Config) RedisOption {
 	return redisOption(func(c *RedisConfig) {
-		c.TLSConfig = cloneTLSConfig(tlsConfig)
+		c.tlsConfig = cloneTLSConfig(tlsConfig)
 	})
 }
 
 // WithRedisDialTimeout sets the timeout for connecting to Redis.
 func WithRedisDialTimeout(timeout time.Duration) RedisOption {
 	return redisOption(func(c *RedisConfig) {
-		c.DialTimeout = timeout
+		c.dialTimeout = timeout
 	})
 }
 
 // WithRedisReadTimeout sets the timeout for reading from Redis.
 func WithRedisReadTimeout(timeout time.Duration) RedisOption {
 	return redisOption(func(c *RedisConfig) {
-		c.ReadTimeout = timeout
+		c.readTimeout = timeout
 	})
 }
 
 // WithRedisWriteTimeout sets the timeout for writing to Redis.
 func WithRedisWriteTimeout(timeout time.Duration) RedisOption {
 	return redisOption(func(c *RedisConfig) {
-		c.WriteTimeout = timeout
+		c.writeTimeout = timeout
 	})
 }
 
 // WithRedisPoolSize sets the size of the connection pool for Redis.
 func WithRedisPoolSize(size int) RedisOption {
 	return redisOption(func(c *RedisConfig) {
-		c.PoolSize = size
+		c.poolSize = size
 	})
 }
 

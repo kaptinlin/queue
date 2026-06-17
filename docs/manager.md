@@ -5,16 +5,15 @@
 ## Initialization
 
 ```go
-redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
-redisOpt := redisConfig.ToAsynqRedisOpt()
-
-inspector := asynq.NewInspector(redisOpt)
-redisClient := redisOpt.MakeRedisClient().(redis.UniversalClient)
-
-manager, err := queue.NewManager(redisClient, inspector)
+redisConfig, err := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
 if err != nil {
 	return err
 }
+manager, err := queue.NewManager(redisConfig)
+if err != nil {
+	return err
+}
+defer manager.Close()
 ```
 
 ## Workers and Queues
@@ -49,6 +48,21 @@ if err := manager.DeleteQueue("default", false); err != nil {
 	}
 	return err
 }
+```
+
+## Redis Inspection
+
+`RedisInfo` is an explicit operational endpoint. `Info` is parsed from Redis `INFO all`, while `RawInfo` keeps the original `INFO all` response for tools that need fields not modeled by `queue`. In cluster mode, `ClusterNodes` keeps the raw `CLUSTER NODES` response and `QueueLocations` reports queue key-slot placement.
+
+Treat `RawInfo` and `ClusterNodes` as infrastructure diagnostics. They can include topology, memory, persistence, replication, module, client, and command statistics from the Redis server. Do not write these raw fields to user-facing logs or responses without your own redaction policy.
+
+```go
+info, err := manager.RedisInfo(ctx)
+if err != nil {
+	return err
+}
+
+fmt.Println(info.Address, info.IsCluster, info.Info["redis_version"])
 ```
 
 ## Job Snapshots
@@ -86,7 +100,11 @@ _ = result
 ## Listing Jobs
 
 ```go
-jobs, err := manager.ListJobsByState("default", queue.StatePending, 50, 1)
+jobs, err := manager.ListJobs(queue.JobQuery{
+	Queue: "default",
+	State: queue.StatePending,
+	Page:  queue.Page{Size: 50, Number: 1},
+})
 if err != nil {
 	return err
 }
@@ -96,10 +114,12 @@ for _, job := range jobs {
 }
 ```
 
+`Page` is one-based. The zero value uses the first page with 50 jobs; if either field is set, both `Size` and `Number` must be positive.
+
 Use `ListActiveJobs` when a UI needs active worker timing fields.
 
 ```go
-active, err := manager.ListActiveJobs("default", 50, 1)
+active, err := manager.ListActiveJobs("default", queue.Page{Size: 50, Number: 1})
 if err != nil {
 	return err
 }
@@ -109,7 +129,7 @@ _ = active
 Aggregating jobs require a group, so list them through the explicit group API.
 
 ```go
-aggregating, err := manager.ListAggregatingJobs("default", "tenant-a", 50, 1)
+aggregating, err := manager.ListAggregatingJobs("default", "tenant-a", queue.Page{Size: 50, Number: 1})
 if err != nil {
 	return err
 }
@@ -142,7 +162,7 @@ fmt.Println("archived", count)
 Active jobs cannot be archived directly; cancel them first.
 
 ```go
-cancelled, err := manager.CancelActiveJobs("default", 100, 1)
+cancelled, err := manager.CancelActiveJobs("default", 100)
 if err != nil {
 	return err
 }

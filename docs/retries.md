@@ -32,18 +32,18 @@ if err != nil {
 
 This setup applies escalating delay times for retries, efficiently spacing out retry attempts.
 
-## Distinguishing Failure Types
+## Distinguishing Retry Accounting
 
-Identifying the nature of failures allows for more intelligent retry decisions, conserving resources and reducing unnecessary retries.
+Some errors should retry a job without increasing failure counters. Use this for conditions where the job did not actually fail, such as a dependency asking the worker to come back later.
 
-### Handling Temporary Failures
+### Retrying Without Recording Failure
 
-Temporary issues should trigger retries without impacting the retry count, aiding in self-recovery of transient problems.
+Return `ErrRetryWithoutFailure` directly when no underlying cause exists. When you have a cause, wrap it with `NewRetryWithoutFailureError` so callers and logs keep the original reason.
 
 ```go
 func ProcessJobHandler(ctx context.Context, delivery *queue.Delivery) error {
-    if temporaryIssue() {
-        return queue.ErrTransientIssue // Signals a retry without penalty
+    if err := dependencyNotReady(); err != nil {
+        return queue.NewRetryWithoutFailureError(err)
     }
     // Job processing logic
     return nil

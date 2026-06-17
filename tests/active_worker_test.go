@@ -20,7 +20,7 @@ const activeJobTestQueue = "active_job_test"
 // ListActiveJobs, CancelActiveJobs).
 func TestManagerWithActiveWorker(t *testing.T) {
 	redisConfig := getRedisConfig()
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer func() {
 		_ = manager.DeleteQueue(activeJobTestQueue, true)
 	}()
@@ -71,7 +71,7 @@ func TestManagerWithActiveWorker(t *testing.T) {
 
 func TestManagerListWorkersWithRunningWorker(t *testing.T) {
 	redisConfig := getRedisConfig()
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	worker, err := queue.NewWorker(redisConfig,
 		queue.WithWorkerConcurrency(1),

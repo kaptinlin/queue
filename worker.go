@@ -16,12 +16,9 @@ import (
 const (
 	// DefaultQueue is the default queue name used when no queue is specified.
 	DefaultQueue = "default"
-	// DefaultRateLimitRetryAfter is the default duration to wait before
-	// retrying a rate-limited job.
+	// DefaultRateLimitRetryAfter is the default retry delay for business-level
+	// RateLimitError values.
 	DefaultRateLimitRetryAfter = 10 * time.Second
-	// DefaultHandlerChannelBuffer is the default buffer size for the
-	// handler's internal done channel used in timeout processing.
-	DefaultHandlerChannelBuffer = 1
 )
 
 func defaultQueues() map[string]int {
@@ -62,6 +59,9 @@ func (wc *workerConfig) validate() error {
 	if wc.Concurrency <= 0 {
 		return ErrInvalidWorkerConcurrency
 	}
+	if wc.StopTimeout < 0 {
+		return ErrInvalidWorkerStopTimeout
+	}
 
 	if len(wc.Queues) == 0 {
 		return ErrInvalidWorkerQueues
@@ -79,9 +79,6 @@ func (wc *workerConfig) validate() error {
 func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) {
 	if redisConfig == nil {
 		return nil, ErrInvalidRedisConfig
-	}
-	if err := redisConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid redis config: %w", err)
 	}
 
 	config := &workerConfig{
@@ -116,11 +113,19 @@ func NewWorker(redisConfig *RedisConfig, opts ...WorkerOption) (*Worker, error) 
 }
 
 // Use adds a global middleware to the worker.
-func (w *Worker) Use(middleware MiddlewareFunc) {
+func (w *Worker) Use(middleware MiddlewareFunc) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	if err := w.mutable(); err != nil {
+		return err
+	}
+	if middleware == nil {
+		return ErrInvalidMiddleware
+	}
+
 	w.middlewares = append(w.middlewares, middleware)
+	return nil
 }
 
 // Group retrieves an existing group by name or creates a new one if it doesn't exist.
@@ -150,6 +155,10 @@ func (f workerOption) applyWorkerOption(config *workerConfig) {
 
 // Register allows registering a handler function for a specific job type with additional options.
 func (w *Worker) Register(jobType string, handle HandlerFunc, opts ...HandlerOption) error {
+	if err := w.mutable(); err != nil {
+		return err
+	}
+
 	handler, err := NewHandler(jobType, handle, opts...)
 	if err != nil {
 		return err
@@ -163,6 +172,9 @@ func (w *Worker) RegisterHandler(handler *Handler) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
+	if err := w.mutable(); err != nil {
+		return err
+	}
 	if handler == nil {
 		return ErrInvalidHandler
 	}
@@ -213,11 +225,21 @@ func (w *Worker) shutdown() {
 	w.stopped.Store(true)
 }
 
+func (w *Worker) mutable() error {
+	if w.started.Load() {
+		return ErrWorkerAlreadyStarted
+	}
+	if w.stopped.Load() {
+		return ErrWorkerStopped
+	}
+	return nil
+}
+
 // setupAsynqServer initializes the asynq server.
 func (w *Worker) setupAsynqServer(redisConfig *RedisConfig, config *workerConfig) {
-	asynqRedisOpt := redisConfig.ToAsynqRedisOpt()
+	redisOpt := asynqRedisOpt(redisConfig)
 
-	w.asynqServer = asynq.NewServer(asynqRedisOpt, asynq.Config{
+	w.asynqServer = asynq.NewServer(redisOpt, asynq.Config{
 		ShutdownTimeout: config.StopTimeout,
 		Concurrency:     config.Concurrency,
 		Queues:          config.Queues,
@@ -245,8 +267,10 @@ func (w *Worker) makeHandlerFunc(handler *Handler) func(ctx context.Context, tas
 	}
 
 	return func(ctx context.Context, task *asynq.Task) error {
-		if w.limiter != nil && !w.limiter.Allow() {
-			return &ErrRateLimit{RetryAfter: DefaultRateLimitRetryAfter}
+		if w.limiter != nil {
+			if err := w.limiter.Wait(ctx); err != nil {
+				return err
+			}
 		}
 
 		delivery, err := newDeliveryFromTask(ctx, task, handler.jobQueue)
@@ -284,7 +308,7 @@ func asynqHandlerError(err error) error {
 
 // retryDelayFunc determines the delay before retrying a task after failure.
 func (w *Worker) retryDelayFunc(count int, err error, task *asynq.Task) time.Duration {
-	if rateLimitErr, ok := errors.AsType[*ErrRateLimit](err); ok {
+	if rateLimitErr, ok := errors.AsType[*RateLimitError](err); ok {
 		return rateLimitErr.RetryAfter
 	}
 
@@ -297,7 +321,7 @@ func (w *Worker) retryDelayFunc(count int, err error, task *asynq.Task) time.Dur
 
 // isFailure determines whether a task failure should be considered final, based on custom logic.
 func (w *Worker) isFailure(err error) bool {
-	return !IsErrRateLimit(err) && !errors.Is(err, ErrTransientIssue)
+	return !errors.Is(err, ErrRetryWithoutFailure)
 }
 
 // WorkerOption implementations for configuring various aspects of the Worker.
@@ -316,8 +340,8 @@ func WithWorkerStopTimeout(timeout time.Duration) WorkerOption {
 	})
 }
 
-// WithWorkerRateLimiter configures a global rate limiter for the worker.
-func WithWorkerRateLimiter(limiter *rate.Limiter) WorkerOption {
+// WithWorkerLocalRateLimiter configures in-process worker backpressure.
+func WithWorkerLocalRateLimiter(limiter *rate.Limiter) WorkerOption {
 	return workerOption(func(c *workerConfig) {
 		c.Limiter = limiter
 	})

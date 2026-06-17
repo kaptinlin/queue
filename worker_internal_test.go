@@ -9,6 +9,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/hibiken/asynq"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWorkerConfigValidate(t *testing.T) {
@@ -31,6 +32,11 @@ func TestWorkerConfigValidate(t *testing.T) {
 			name:    "negative concurrency",
 			config:  workerConfig{Concurrency: -1, Queues: map[string]int{"q": 1}},
 			wantErr: ErrInvalidWorkerConcurrency,
+		},
+		{
+			name:    "negative stop timeout",
+			config:  workerConfig{Concurrency: 1, StopTimeout: -time.Second, Queues: map[string]int{"q": 1}},
+			wantErr: ErrInvalidWorkerStopTimeout,
 		},
 		{
 			name:    "empty queues",
@@ -70,8 +76,9 @@ func TestIsFailure(t *testing.T) {
 	w := &Worker{}
 
 	assert.True(t, w.isFailure(assert.AnError))
-	assert.False(t, w.isFailure(&ErrRateLimit{RetryAfter: time.Second}))
-	assert.False(t, w.isFailure(ErrTransientIssue))
+	assert.False(t, w.isFailure(&RateLimitError{RetryAfter: time.Second}))
+	assert.False(t, w.isFailure(ErrRetryWithoutFailure))
+	assert.False(t, w.isFailure(NewRetryWithoutFailureError(assert.AnError)))
 }
 
 func TestAsynqHandlerErrorTranslatesSkipRetry(t *testing.T) {
@@ -104,6 +111,62 @@ func TestWorkerGroup_ReusesGroupByName(t *testing.T) {
 	assert.Same(t, w, email.worker)
 }
 
+func TestWorkerAssemblyRejectsNilMiddleware(t *testing.T) {
+	t.Parallel()
+
+	worker, err := NewWorker(DefaultRedisConfig())
+	require.NoError(t, err)
+
+	assert.ErrorIs(t, worker.Use(nil), ErrInvalidMiddleware)
+
+	group := worker.Group("email")
+	assert.ErrorIs(t, group.Use(nil), ErrInvalidMiddleware)
+
+	_, err = NewHandler(
+		"email:send",
+		func(context.Context, *Delivery) error { return nil },
+		WithMiddleware(nil),
+	)
+	assert.ErrorIs(t, err, ErrInvalidMiddleware)
+}
+
+func TestWorkerAssemblyRejectsStartedWorker(t *testing.T) {
+	t.Parallel()
+
+	worker, err := NewWorker(DefaultRedisConfig())
+	require.NoError(t, err)
+
+	group := worker.Group("email")
+	middleware := func(next HandlerFunc) HandlerFunc { return next }
+	handler := func(context.Context, *Delivery) error { return nil }
+	registeredHandler, err := NewHandler("email:registered", handler)
+	require.NoError(t, err)
+
+	worker.started.Store(true)
+
+	assert.ErrorIs(t, worker.Use(middleware), ErrWorkerAlreadyStarted)
+	assert.ErrorIs(t, worker.Register("email:send", handler), ErrWorkerAlreadyStarted)
+	assert.ErrorIs(t, worker.RegisterHandler(registeredHandler), ErrWorkerAlreadyStarted)
+	assert.ErrorIs(t, group.Use(middleware), ErrWorkerAlreadyStarted)
+	assert.ErrorIs(t, group.Register("email:group", handler), ErrWorkerAlreadyStarted)
+	assert.ErrorIs(t, group.RegisterHandler(registeredHandler), ErrWorkerAlreadyStarted)
+}
+
+func TestWorkerAssemblyRejectsStoppedWorker(t *testing.T) {
+	t.Parallel()
+
+	worker, err := NewWorker(DefaultRedisConfig())
+	require.NoError(t, err)
+
+	worker.stopped.Store(true)
+
+	middleware := func(next HandlerFunc) HandlerFunc { return next }
+	assert.ErrorIs(t, worker.Use(middleware), ErrWorkerStopped)
+	assert.ErrorIs(t, worker.Register("email:send", func(context.Context, *Delivery) error {
+		return nil
+	}), ErrWorkerStopped)
+}
+
 func TestGroupRegister_ComposesGroupMiddlewareBeforeOptions(t *testing.T) {
 	w := &Worker{
 		groups:   make(map[string]*Group),
@@ -120,7 +183,7 @@ func TestGroupRegister_ComposesGroupMiddlewareBeforeOptions(t *testing.T) {
 	}
 
 	group := w.Group("email")
-	group.Use(middleware("group"))
+	assert.NoError(t, group.Use(middleware("group")))
 	err := group.Register(
 		"email:send",
 		func(context.Context, *Delivery) error { return nil },

@@ -26,15 +26,12 @@ func BenchmarkJobCreationWithOptions(b *testing.B) {
 	}
 }
 
-func BenchmarkJobConvertToAsynqTask(b *testing.B) {
+func BenchmarkJobPayloadBytes(b *testing.B) {
 	payload := map[string]any{"key": "value", "count": 123}
 	job := newJob(b, "test_job", payload, queue.WithQueue("default"))
 
 	for b.Loop() {
-		_, _, err := job.ConvertToAsynqTask()
-		if err != nil {
-			b.Fatal(err)
-		}
+		_ = job.PayloadBytes()
 	}
 }
 

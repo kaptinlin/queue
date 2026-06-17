@@ -2,6 +2,7 @@ package queue
 
 import (
 	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -71,7 +72,9 @@ func (j *Job) Options() JobOptions {
 	return cloneJobOptions(j.options)
 }
 
-// ContentDigest returns a stable digest derived from the job type and payload.
+const contentDigestPrefix = "q1:sha256:"
+
+// ContentDigest returns a versioned digest of the job type and encoded payload.
 func (j *Job) ContentDigest() string {
 	if j == nil {
 		return ""
@@ -142,24 +145,17 @@ func WithDeadline(deadline *time.Time) JobOption {
 	})
 }
 
-// ConvertToAsynqTask converts the Job into an asynq.Task, ready for enqueueing.
-func (j *Job) ConvertToAsynqTask() (*asynq.Task, []asynq.Option, error) {
+func (j *Job) convertToAsynqTask(options JobOptions) (*asynq.Task, []asynq.Option, error) {
 	if j == nil {
 		return nil, nil, ErrInvalidJob
 	}
 
-	opts := j.ConvertToAsynqOptions()
+	opts := asynqOptionsFromJobOptions(options)
 	return asynq.NewTask(j.jobType, j.PayloadBytes()), opts, nil
 }
 
-// ConvertToAsynqOptions converts the Job's options into asynq.Option slice.
-func (j *Job) ConvertToAsynqOptions() []asynq.Option {
-	if j == nil {
-		return nil
-	}
-
+func asynqOptionsFromJobOptions(options JobOptions) []asynq.Option {
 	opts := make([]asynq.Option, 0, 6)
-	options := j.options
 
 	if options.Queue != "" {
 		opts = append(opts, asynq.Queue(options.Queue))
@@ -217,7 +213,7 @@ func contentDigest(jobType string, payloadBytes []byte) string {
 	hash.Write([]byte(jobType))
 	hash.Write([]byte{0})
 	hash.Write(payloadBytes)
-	return fmt.Sprintf("%x", hash.Sum(nil))
+	return contentDigestPrefix + hex.EncodeToString(hash.Sum(nil))
 }
 
 // DecodePayload decodes the job payload into a given struct.

@@ -12,12 +12,22 @@ type Group struct {
 	mu          sync.Mutex
 }
 
-// Use adds a middleware to the group.
-func (g *Group) Use(middlewares ...MiddlewareFunc) {
+// Use adds middleware to the group.
+func (g *Group) Use(middlewares ...MiddlewareFunc) error {
+	if err := g.worker.mutable(); err != nil {
+		return err
+	}
+	for _, middleware := range middlewares {
+		if middleware == nil {
+			return ErrInvalidMiddleware
+		}
+	}
+
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
 	g.middlewares = append(g.middlewares, middlewares...)
+	return nil
 }
 
 // Register configures and registers a handler for a specific job type within this group.

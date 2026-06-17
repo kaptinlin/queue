@@ -64,16 +64,16 @@ func TestClientWithClientErrorHandler(t *testing.T) {
 	client, err := queue.NewClient(redisConfig, queue.WithClientErrorHandler(handler))
 	require.NoError(t, err, "Failed to create client with custom error handler")
 
-	// Create a job with an invalid configuration that is known to cause ConvertToAsynqTask to return an error
-	jobType := "" // Intentionally left blank to trigger an error in ConvertToAsynqTask
+	// Create a job with an invalid configuration.
+	jobType := "" // Intentionally left blank to trigger a validation error.
 	payload := map[string]any{"key": "value"}
 
-	// Attempt to enqueue the job, which should fail at the job conversion step
+	// Attempt to enqueue the job, which should fail before it reaches Redis.
 	_, err = client.Enqueue(jobType, payload)
 	assert.Error(t, err, "Expected an error from enqueueing a job with invalid configuration")
 
-	// Check if the custom error handler was invoked with the conversion error
-	assert.NotEmpty(t, handler.errors, "Expected the custom error handler to be invoked with a conversion error")
+	// Check if the custom error handler was invoked with the validation error.
+	assert.NotEmpty(t, handler.errors, "Expected the custom error handler to be invoked with a validation error")
 
 	// Clean up resources
 	assert.NoError(t, client.Close(), "Failed to close client")

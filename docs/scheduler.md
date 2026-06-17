@@ -7,10 +7,13 @@ The `Scheduler` enables scheduled job execution at specified intervals or accord
 Start with a valid Redis configuration. Initialize the Scheduler with necessary options like the time zone:
 
 ```go
-redisConfig := queue.NewRedisConfig(
+redisConfig, err := queue.NewRedisConfig(
     queue.WithRedisAddress("localhost:6379"), // Specify your Redis server address
     // Additional configuration options as needed...
 )
+if err != nil {
+    log.Fatal("Redis config failed:", err)
+}
 
 scheduler, err := queue.NewScheduler(redisConfig,
     queue.WithSchedulerLocation(time.UTC), // Adjust the time zone as needed
@@ -36,14 +39,20 @@ For scheduling jobs based on cron expressions:
 jobType := "report:generate"
 payload := map[string]interface{}{"reportType": "weekly"}
 cronExpression := "0 9 * * 1" // Example: Every Monday at 9:00 AM
+ctx := context.Background()
 
-_, err = scheduler.RegisterCron("daily-report", cronExpression, jobType, payload)
+job, err := queue.NewJob(jobType, payload)
+if err != nil {
+    log.Fatalf("Job creation failed: %v", err)
+}
+
+_, err = scheduler.RegisterCron(ctx, "daily-report", cronExpression, job)
 if err != nil {
     log.Fatalf("Cron job scheduling failed: %v", err)
 }
 ```
 
-### Periodic Jobs
+### Interval Jobs
 
 For interval-based job scheduling:
 
@@ -51,10 +60,16 @@ For interval-based job scheduling:
 jobType := "status:check"
 payload := map[string]interface{}{"target": "database"}
 interval := 15 * time.Minute // Example: Every 15 minutes
+ctx := context.Background()
 
-_, err = scheduler.RegisterPeriodic("heartbeat", interval, jobType, payload)
+job, err := queue.NewJob(jobType, payload)
 if err != nil {
-    log.Fatalf("Periodic job scheduling failed: %v", err)
+    log.Fatalf("Job creation failed: %v", err)
+}
+
+_, err = scheduler.RegisterInterval(ctx, "heartbeat", interval, job)
+if err != nil {
+    log.Fatalf("Interval job scheduling failed: %v", err)
 }
 ```
 

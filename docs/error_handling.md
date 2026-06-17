@@ -8,9 +8,12 @@ By default, the `Client` and `Worker` automatically log all errors using the bui
 
 ```go
 // Errors are automatically logged with structured logging
-redisConfig := queue.NewRedisConfig(
+redisConfig, err := queue.NewRedisConfig(
     queue.WithRedisAddress("localhost:6379"),
 )
+if err != nil {
+    return err
+}
 client, _ := queue.NewClient(redisConfig)
 worker, _ := queue.NewWorker(redisConfig)
 

@@ -33,16 +33,19 @@ Client -> Redis queue -> Worker -> Delivery handler -> result/error
 |------|-------|----------------|
 | Enqueue | `client.go`, `job.go` | Validate immutable jobs, encode payloads, enqueue Asynq tasks |
 | Runtime | `worker.go`, `delivery.go`, `handler.go`, `middleware.go`, `group.go` | Process deliveries, compose middleware, enforce rate limits and timeouts |
-| Operations | `manager.go`, `info.go`, `state.go` | Inspect queues/jobs and perform state operations |
+| Operations | `manager.go`, `manager_*.go`, `info.go`, `state.go` | Inspect queues/jobs and perform state operations |
 | Scheduling | `scheduler.go`, `configs.go` | Register explicit schedule IDs and enqueue jobs on cron/periodic cadence |
 | Infrastructure | `redis.go`, `logger.go`, `default_logger.go`, `errors.go` | Redis config, logging adapters, stable error sentinels |
 
 ## Documentation Map
 
-No `SPECS/` directory exists in the current tree. Treat source, tests, and feature docs as the current contract.
+`SPECS/` is the canonical design contract. Feature docs under `docs/` explain usage and must not contradict the specs.
 
 | Document | Purpose |
 |----------|---------|
+| [SPECS/00-overview.md](SPECS/00-overview.md) | Scope, boundaries, non-goals |
+| [SPECS/10-domain-model.md](SPECS/10-domain-model.md) | Core concepts, identities, invariants |
+| [SPECS/20-api-architecture.md](SPECS/20-api-architecture.md) | API lifecycle, error, manager, scheduler decisions |
 | [README.md](README.md) | User-facing installation and usage guide |
 | [docs/priorities.md](docs/priorities.md) | Priority queue usage |
 | [docs/rate_limiting.md](docs/rate_limiting.md) | Worker and handler rate limiting |
@@ -50,7 +53,7 @@ No `SPECS/` directory exists in the current tree. Treat source, tests, and featu
 | [docs/retries.md](docs/retries.md) | Retry policy and skip-retry behavior |
 | [docs/timeouts_deadlines.md](docs/timeouts_deadlines.md) | Job deadlines and handler timeouts |
 | [docs/scheduler.md](docs/scheduler.md) | Scheduler registration and hooks |
-| [docs/config_provider.md](docs/config_provider.md) | Custom scheduler config providers |
+| [docs/schedule_store.md](docs/schedule_store.md) | Scheduler schedule persistence |
 | [docs/middleware.md](docs/middleware.md) | Middleware composition |
 | [docs/error_handling.md](docs/error_handling.md) | Client and worker error handlers |
 | [docs/manager.md](docs/manager.md) | Manager APIs for operational UIs |
@@ -70,14 +73,14 @@ No `SPECS/` directory exists in the current tree. Treat source, tests, and featu
 
 - **KISS** — Each public concept has one job: `Job` is enqueue intent, `Delivery` is runtime fact, `JobInfo` is inspection state.
 - **DRY** — Queue state/action rules and error translations should live once and be reused by single and batch paths.
-- **SRP** — Client, Worker, Manager, Scheduler, and ConfigProvider have separate responsibilities; do not leak one component's runtime facts into another.
+- **SRP** — Client, Worker, Manager, Scheduler, and ScheduleStore have separate responsibilities; do not leak one component's runtime facts into another.
 - **ISP** — Avoid fat exported interfaces. Let consumers define the small interfaces their tests or services need.
 - **Precision over cleverness** — Names must carry lifecycle meaning: schedule ID, content digest, runtime ID, delivery, snapshot.
 - **Never:** workflow engine gravity, hidden process ownership, broad compatibility shims, abstraction theater.
 
 ## API Design Principles
 
-- **Progressive disclosure**: Common enqueue/worker flows stay direct; lower-level Asynq conversion remains explicit.
+- **Progressive disclosure**: Common enqueue/worker flows stay direct; lower-level backend conversion remains private.
 - **Immutable input**: `Job` is built by `NewJob`, validates at construction, and exposes copies through accessors.
 - **Handler intent**: `Handler` is built by `NewHandler`, validates type/function/queue at construction, and exposes read-only metadata.
 - **Runtime separation**: Handlers receive `*Delivery`, not enqueue `*Job`; result writing belongs to delivery.

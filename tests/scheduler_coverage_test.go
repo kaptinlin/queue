@@ -21,12 +21,12 @@ func TestWithSchedulerLocation(t *testing.T) {
 	assert.NotNil(t, scheduler)
 }
 
-// --- WithConfigProvider ---
+// --- WithScheduleStore ---
 
-func TestWithConfigProvider(t *testing.T) {
-	provider := queue.NewMemoryConfigProvider()
+func TestWithScheduleStore(t *testing.T) {
+	store := queue.NewMemoryScheduleStore()
 	scheduler, err := queue.NewScheduler(getRedisConfig(),
-		queue.WithConfigProvider(provider),
+		queue.WithScheduleStore(store),
 	)
 	require.NoError(t, err)
 	assert.NotNil(t, scheduler)
@@ -40,48 +40,47 @@ func TestNewScheduler_NilRedisConfig(t *testing.T) {
 }
 
 func TestNewScheduler_InvalidRedisConfig(t *testing.T) {
-	cfg := &queue.RedisConfig{Network: "bad", Addr: ""}
-	_, err := queue.NewScheduler(cfg)
-	assert.Error(t, err)
+	cfg, err := queue.NewRedisConfig(queue.WithRedisNetwork("bad"))
+	assert.Nil(t, cfg)
+	assert.ErrorIs(t, err, queue.ErrRedisUnsupportedNetwork)
 }
 
 func TestSchedulerRegisterCron_AcceptsStandardSpec(t *testing.T) {
 	scheduler, err := queue.NewScheduler(getRedisConfig())
 	require.NoError(t, err)
 
-	id, err := scheduler.RegisterCron("cron_standard_spec_test", "*/5 * * * *", "cron_standard_spec_test", nil)
+	job := newJob(t, "cron_standard_spec_test", nil)
+	id, err := scheduler.RegisterCron(t.Context(), "cron_standard_spec_test", "*/5 * * * *", job)
 	require.NoError(t, err)
 	assert.NotEmpty(t, id)
 }
 
-// --- RegisterPeriodicJob ---
+// --- RegisterInterval ---
 
-func TestSchedulerRegisterPeriodicJob(t *testing.T) {
+func TestSchedulerRegisterInterval(t *testing.T) {
 	scheduler, err := queue.NewScheduler(getRedisConfig())
 	require.NoError(t, err)
 
 	job := newJob(t, "periodic_test", nil)
-	id, err := scheduler.RegisterPeriodicJob(
-		"periodic_test", 2*time.Second, job,
-	)
+	id, err := scheduler.RegisterInterval(t.Context(), "periodic_test", 2*time.Second, job)
 	require.NoError(t, err)
 	assert.NotEmpty(t, id)
 }
 
-func TestSchedulerRegisterPeriodicJob_InvalidInterval(t *testing.T) {
+func TestSchedulerRegisterInterval_InvalidInterval(t *testing.T) {
 	scheduler, err := queue.NewScheduler(getRedisConfig())
 	require.NoError(t, err)
 
-	_, err = scheduler.RegisterPeriodicJob("periodic_test", 0, newJob(t, "periodic_test", nil))
+	_, err = scheduler.RegisterInterval(t.Context(), "periodic_test", 0, newJob(t, "periodic_test", nil))
 	assert.ErrorIs(t, err, queue.ErrInvalidPeriodicInterval)
 }
 
-// --- UnregisterCronJob not found ---
+// --- Unregister not found ---
 
-func TestSchedulerUnregisterCronJob_NotFound(t *testing.T) {
+func TestSchedulerUnregister_NotFound(t *testing.T) {
 	scheduler, err := queue.NewScheduler(getRedisConfig())
 	require.NoError(t, err)
 
-	err = scheduler.UnregisterCronJob("nonexistent")
+	err = scheduler.Unregister(t.Context(), "nonexistent")
 	assert.ErrorIs(t, err, queue.ErrScheduleNotFound)
 }

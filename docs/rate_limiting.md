@@ -1,14 +1,14 @@
 # Rate Limiting
 
-The `queue` library introduces rate limiting capabilities at both the global worker and individual handler levels. This feature is essential for maintaining manageable system loads and preventing the exhaustion of resources or external API limits.
+The `queue` library supports in-process rate limiting at both the worker and handler levels. These limiters apply backpressure by waiting on the processing context; they do not mark jobs as failed and they are not distributed across processes.
 
 ## Global Rate Limiting
 
-Applies a uniform rate limit across all tasks handled by a worker, facilitating overall system load management.
+Applies a uniform local rate limit across all tasks handled by one worker process.
 
 ### Configuring Global Rate Limit
 
-Implement a global rate limit using the `WithWorkerRateLimiter` option during worker setup.
+Implement a global rate limit using the `WithWorkerLocalRateLimiter` option during worker setup.
 
 ```go
 import (
@@ -20,7 +20,7 @@ import (
 limiter := rate.NewLimiter(rate.Limit(10), 5)
 
 // Apply the global rate limiter to the worker.
-worker, err := queue.NewWorker(redisConfig, queue.WithWorkerRateLimiter(limiter))
+worker, err := queue.NewWorker(redisConfig, queue.WithWorkerLocalRateLimiter(limiter))
 if err != nil {
     log.Fatalf("Worker initialization failed: %v", err)
 }
@@ -28,11 +28,11 @@ if err != nil {
 
 ## Handler Level Rate Limiting
 
-Enables specific rate limits for distinct task types, providing precision control over task execution rates.
+Enables local rate limits for distinct task types.
 
 ### Setting a Handler's Rate Limit
 
-Define a handler-specific rate limit with the `WithRateLimiter` option.
+Define a handler-specific rate limit with the `WithLocalRateLimiter` option.
 
 ```go
 import (
@@ -50,7 +50,7 @@ func ProcessEmailJob(ctx context.Context, delivery *queue.Delivery) error {
 limiter := rate.NewLimiter(rate.Every(1*time.Minute), 5)
 
 // Apply the rate limiter to the handler for targeted execution control.
-handler, err := queue.NewHandler("send_email", ProcessEmailJob, queue.WithRateLimiter(limiter))
+handler, err := queue.NewHandler("send_email", ProcessEmailJob, queue.WithLocalRateLimiter(limiter))
 if err != nil {
     log.Fatalf("Handler creation failed: %v", err)
 }
@@ -66,4 +66,10 @@ if err := worker.Run(ctx); err != nil {
 }
 ```
 
-These configurations allow you to effectively manage the execution rate of tasks, ensuring your application operates efficiently without overwhelming external services or system resources. This approach helps maintain application responsiveness and reliability.
+Use a business-level `RateLimitError` when a handler learns from an external service that the job should retry later:
+
+```go
+return queue.NewRateLimitError(30 * time.Second)
+```
+
+The worker uses `RetryAfter` for retry delay and does not count `RateLimitError` as a job failure. `errors.Is(err, queue.ErrRetryWithoutFailure)` is true for rate-limit errors. Local `rate.Limiter` values are process-local; use a separate shared limiter if multiple worker processes need one global quota.

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -9,107 +10,170 @@ import (
 	"github.com/kaptinlin/queue"
 )
 
-// --- MemoryConfigProvider ---
+// --- MemoryScheduleStore ---
 
-func TestMemoryConfigProvider_RegisterDuplicate(t *testing.T) {
+func TestMemoryScheduleStore_PutDuplicate(t *testing.T) {
 	t.Parallel()
 
-	p := queue.NewMemoryConfigProvider()
-	job := newJob(t, "test", nil)
+	store := queue.NewMemoryScheduleStore()
+	schedule := queue.Schedule{
+		ID:       "test-schedule",
+		Kind:     queue.ScheduleCron,
+		CronSpec: "* * * * *",
+		Job:      newJob(t, "test", nil),
+		Enabled:  true,
+	}
 
-	_, err := p.RegisterCronJob("test-schedule", "* * * * *", job)
-	require.NoError(t, err)
+	require.NoError(t, store.Put(t.Context(), schedule))
 
-	_, err = p.RegisterCronJob("test-schedule", "* * * * *", job)
+	err := store.Put(t.Context(), schedule)
 	assert.ErrorIs(t, err, queue.ErrScheduleAlreadyExists)
 }
 
-func TestMemoryConfigProvider_UnregisterNotFound(t *testing.T) {
+func TestMemoryScheduleStore_DeleteNotFound(t *testing.T) {
 	t.Parallel()
 
-	p := queue.NewMemoryConfigProvider()
-	err := p.UnregisterJob("nonexistent")
+	store := queue.NewMemoryScheduleStore()
+	err := store.Delete(t.Context(), "nonexistent")
 	assert.ErrorIs(t, err, queue.ErrScheduleNotFound)
 }
 
-func TestMemoryConfigProvider_UnregisterRemovesJob(t *testing.T) {
+func TestMemoryScheduleStore_DeleteRemovesSchedule(t *testing.T) {
 	t.Parallel()
 
-	p := queue.NewMemoryConfigProvider()
-	job := newJob(t, "test", nil)
+	store := queue.NewMemoryScheduleStore()
+	schedule := queue.Schedule{
+		ID:       "test-schedule",
+		Kind:     queue.ScheduleCron,
+		CronSpec: "* * * * *",
+		Job:      newJob(t, "test", nil),
+		Enabled:  true,
+	}
 
-	id, err := p.RegisterCronJob("test-schedule", "* * * * *", job)
+	require.NoError(t, store.Put(t.Context(), schedule))
+	require.NoError(t, store.Delete(t.Context(), schedule.ID))
+
+	schedules, err := store.List(t.Context())
 	require.NoError(t, err)
-
-	require.NoError(t, p.UnregisterJob(id))
-
-	configs, err := p.GetConfigs()
-	require.NoError(t, err)
-	assert.Empty(t, configs)
-	assert.ErrorIs(t, p.UnregisterJob(id), queue.ErrScheduleNotFound)
+	assert.Empty(t, schedules)
+	assert.ErrorIs(t, store.Delete(t.Context(), schedule.ID), queue.ErrScheduleNotFound)
 }
 
-func TestMemoryConfigProvider_GetConfigs(t *testing.T) {
+func TestMemoryScheduleStore_List(t *testing.T) {
 	t.Parallel()
 
-	p := queue.NewMemoryConfigProvider()
-
+	store := queue.NewMemoryScheduleStore()
 	j1 := newJob(t, "job1", map[string]string{"k": "v1"})
 	j2 := newJob(t, "job2", map[string]string{"k": "v2"})
 
-	_, err := p.RegisterCronJob("job1-schedule", "* * * * *", j1)
-	require.NoError(t, err)
-	_, err = p.RegisterCronJob("job2-schedule", "*/5 * * * *", j2)
-	require.NoError(t, err)
+	require.NoError(t, store.Put(t.Context(), queue.Schedule{
+		ID:       "job2-schedule",
+		Kind:     queue.ScheduleInterval,
+		Interval: 5 * time.Second,
+		Job:      j2,
+		Enabled:  true,
+	}))
+	require.NoError(t, store.Put(t.Context(), queue.Schedule{
+		ID:       "job1-schedule",
+		Kind:     queue.ScheduleCron,
+		CronSpec: "* * * * *",
+		Job:      j1,
+		Enabled:  true,
+	}))
 
-	configs, err := p.GetConfigs()
+	schedules, err := store.List(t.Context())
 	require.NoError(t, err)
-	assert.Len(t, configs, 2)
+	require.Len(t, schedules, 2)
+	assert.Equal(t, "job1-schedule", schedules[0].ID)
+	assert.Equal(t, "job2-schedule", schedules[1].ID)
 }
 
-func TestMemoryConfigProvider_GetConfigs_Empty(t *testing.T) {
+func TestMemoryScheduleStore_ListEmpty(t *testing.T) {
 	t.Parallel()
 
-	p := queue.NewMemoryConfigProvider()
-	configs, err := p.GetConfigs()
+	store := queue.NewMemoryScheduleStore()
+	schedules, err := store.List(t.Context())
 	require.NoError(t, err)
-	assert.Empty(t, configs)
+	assert.Empty(t, schedules)
 }
 
-func TestMemoryConfigProvider_AllowsDuplicateContentWithDifferentScheduleIDs(t *testing.T) {
+func TestMemoryScheduleStore_AllowsDuplicateContentWithDifferentScheduleIDs(t *testing.T) {
 	t.Parallel()
 
-	p := queue.NewMemoryConfigProvider()
+	store := queue.NewMemoryScheduleStore()
 	j1 := newJob(t, "test", map[string]string{"k": "v"})
 	j2 := newJob(t, "test", map[string]string{"k": "v"})
 
-	_, err := p.RegisterCronJob("first", "* * * * *", j1)
-	require.NoError(t, err)
+	require.NoError(t, store.Put(t.Context(), queue.Schedule{
+		ID:       "first",
+		Kind:     queue.ScheduleCron,
+		CronSpec: "* * * * *",
+		Job:      j1,
+		Enabled:  true,
+	}))
 
-	_, err = p.RegisterCronJob("second", "*/5 * * * *", j2)
+	err := store.Put(t.Context(), queue.Schedule{
+		ID:       "second",
+		Kind:     queue.ScheduleCron,
+		CronSpec: "*/5 * * * *",
+		Job:      j2,
+		Enabled:  true,
+	})
 	assert.NoError(t, err)
 }
 
-func TestMemoryConfigProvider_RegisterValidation(t *testing.T) {
+func TestMemoryScheduleStore_PutValidation(t *testing.T) {
 	t.Parallel()
 
+	validJob := newJob(t, "test", nil)
 	tests := []struct {
-		name       string
-		identifier string
-		job        *queue.Job
-		want       error
+		name     string
+		schedule queue.Schedule
+		want     error
 	}{
-		{name: "empty identifier", identifier: "", job: newJob(t, "test", nil), want: queue.ErrNoScheduleIDSpecified},
-		{name: "nil job", identifier: "test", job: nil, want: queue.ErrInvalidJob},
+		{
+			name: "empty identifier",
+			schedule: queue.Schedule{
+				Kind:     queue.ScheduleCron,
+				CronSpec: "* * * * *",
+				Job:      validJob,
+			},
+			want: queue.ErrNoScheduleIDSpecified,
+		},
+		{
+			name: "nil job",
+			schedule: queue.Schedule{
+				ID:       "test",
+				Kind:     queue.ScheduleCron,
+				CronSpec: "* * * * *",
+			},
+			want: queue.ErrInvalidJob,
+		},
+		{
+			name: "invalid kind",
+			schedule: queue.Schedule{
+				ID:  "test",
+				Job: validJob,
+			},
+			want: queue.ErrInvalidScheduleKind,
+		},
+		{
+			name: "invalid interval",
+			schedule: queue.Schedule{
+				ID:   "test",
+				Kind: queue.ScheduleInterval,
+				Job:  validJob,
+			},
+			want: queue.ErrInvalidPeriodicInterval,
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := queue.NewMemoryConfigProvider()
-			id, err := p.RegisterCronJob(tc.identifier, "* * * * *", tc.job)
-			assert.Empty(t, id)
+			store := queue.NewMemoryScheduleStore()
+			err := store.Put(t.Context(), tc.schedule)
 			assert.ErrorIs(t, err, tc.want)
 		})
 	}

@@ -44,7 +44,10 @@ type EmailPayload struct {
 }
 
 func main() {
-	redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	redisConfig, err := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	client, err := queue.NewClient(redisConfig)
 	if err != nil {
 		log.Fatal(err)
@@ -92,7 +95,10 @@ func handleEmail(ctx context.Context, delivery *queue.Delivery) error {
 }
 
 func main() {
-	redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	redisConfig, err := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	if err != nil {
+		log.Fatal(err)
+	}
 	worker, err := queue.NewWorker(redisConfig, queue.WithWorkerQueue("critical", 10))
 	if err != nil {
 		log.Fatal(err)
@@ -119,6 +125,8 @@ func main() {
 | `Worker` | Processes jobs by type and queue |
 | `Manager` | Inspects queues/jobs and performs operational state changes |
 | `Scheduler` | Enqueues jobs on cron or periodic schedules |
+
+`Job.ContentDigest()` returns a diagnostic digest in the form `q1:sha256:<hex>`. It is derived from the job type and the current queue payload encoding. Do not use it as a business dedupe key, runtime task ID, or schedule ID.
 
 `Delivery` exposes runtime facts for the current processing attempt:
 
@@ -213,14 +221,17 @@ scheduler, err := queue.NewScheduler(redisConfig)
 if err != nil {
 	return err
 }
+ctx := context.Background()
 
-_, err = scheduler.RegisterCron(
-	"daily-report",
-	"0 9 * * *",
-	"report:generate",
+job, err := queue.NewJob("report:generate",
 	map[string]string{"kind": "daily"},
 	queue.WithQueue("reports"),
 )
+if err != nil {
+	return err
+}
+
+_, err = scheduler.RegisterCron(ctx, "daily-report", "0 9 * * *", job)
 ```
 
 Scheduler enqueue hooks are intentionally not exposed until the underlying scheduler can report reliable schedule identity to callbacks.
@@ -234,8 +245,8 @@ if errors.Is(err, queue.ErrNoJobTypeSpecified) {
 	// Fix caller input.
 }
 
-if queue.IsErrRateLimit(err) {
-	// Retry after the duration carried by ErrRateLimit.
+if queue.IsRateLimitError(err) {
+	// Handler reported a business-level retry delay.
 }
 
 if errors.Is(err, queue.ErrRedisUnavailable) {
@@ -259,13 +270,16 @@ worker, err := queue.NewWorker(redisConfig, queue.WithWorkerErrorHandler(WorkerE
 
 ## Documentation
 
+- [Design Overview](SPECS/00-overview.md)
+- [Domain Model](SPECS/10-domain-model.md)
+- [API and Architecture](SPECS/20-api-architecture.md)
 - [Priority Queues](docs/priorities.md)
 - [Rate Limiting](docs/rate_limiting.md)
 - [Retention and Results](docs/retention_results.md)
 - [Retries](docs/retries.md)
 - [Timeouts and Deadlines](docs/timeouts_deadlines.md)
 - [Scheduler](docs/scheduler.md)
-- [Config Provider](docs/config_provider.md)
+- [Schedule Store](docs/schedule_store.md)
 - [Middleware](docs/middleware.md)
 - [Error Handling](docs/error_handling.md)
 - [Manager](docs/manager.md)

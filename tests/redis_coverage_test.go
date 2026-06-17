@@ -11,8 +11,9 @@ import (
 // --- WithRedisUsername ---
 
 func TestWithRedisUsername(t *testing.T) {
-	config := queue.NewRedisConfig(
+	config, err := queue.NewRedisConfig(
 		queue.WithRedisUsername("testuser"),
 	)
-	assert.Equal(t, "testuser", config.Username)
+	assert.NoError(t, err)
+	assert.Equal(t, "testuser", config.Username())
 }

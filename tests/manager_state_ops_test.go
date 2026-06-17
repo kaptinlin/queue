@@ -39,7 +39,7 @@ func enqueueStateOpsJobs(t *testing.T, n int, opts ...queue.JobOption) (*queue.C
 // --- RunJobsByState ---
 
 func TestManagerRunJobsByState_Scheduled(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupStateOpsQueue(t, manager)
 
 	future := time.Now().Add(24 * time.Hour)
@@ -54,14 +54,14 @@ func TestManagerRunJobsByState_Scheduled(t *testing.T) {
 }
 
 func TestManagerRunJobsByState_InvalidState(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.RunJobsByState(stateOpsTestQueue, "bogus")
 	assert.ErrorIs(t, err, queue.ErrInvalidJobState)
 }
 
 func TestManagerRunJobsByState_Active(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.RunJobsByState(stateOpsTestQueue,
 		queue.StateActive)
@@ -69,7 +69,7 @@ func TestManagerRunJobsByState_Active(t *testing.T) {
 }
 
 func TestManagerRunJobsByState_Aggregating(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.RunJobsByState(stateOpsTestQueue,
 		queue.StateAggregating)
@@ -80,7 +80,7 @@ func TestManagerRunJobsByState_Aggregating(t *testing.T) {
 // --- ArchiveJobsByState ---
 
 func TestManagerArchiveJobsByState_Pending(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupStateOpsQueue(t, manager)
 
 	client, _ := enqueueStateOpsJobs(t, 2)
@@ -93,7 +93,7 @@ func TestManagerArchiveJobsByState_Pending(t *testing.T) {
 }
 
 func TestManagerArchiveJobsByState_InvalidState(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.ArchiveJobsByState(stateOpsTestQueue,
 		"bogus")
@@ -101,7 +101,7 @@ func TestManagerArchiveJobsByState_InvalidState(t *testing.T) {
 }
 
 func TestManagerArchiveJobsByState_Active(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.ArchiveJobsByState(stateOpsTestQueue,
 		queue.StateActive)
@@ -109,7 +109,7 @@ func TestManagerArchiveJobsByState_Active(t *testing.T) {
 }
 
 func TestManagerArchiveJobsByState_Aggregating(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.ArchiveJobsByState(stateOpsTestQueue,
 		queue.StateAggregating)
@@ -120,7 +120,7 @@ func TestManagerArchiveJobsByState_Aggregating(t *testing.T) {
 // --- DeleteJobsByState ---
 
 func TestManagerDeleteJobsByState_Pending(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupStateOpsQueue(t, manager)
 
 	client, _ := enqueueStateOpsJobs(t, 2)
@@ -133,7 +133,7 @@ func TestManagerDeleteJobsByState_Pending(t *testing.T) {
 }
 
 func TestManagerDeleteJobsByState_InvalidState(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.DeleteJobsByState(stateOpsTestQueue,
 		"bogus")
@@ -141,7 +141,7 @@ func TestManagerDeleteJobsByState_InvalidState(t *testing.T) {
 }
 
 func TestManagerDeleteJobsByState_Active(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.DeleteJobsByState(stateOpsTestQueue,
 		queue.StateActive)
@@ -149,7 +149,7 @@ func TestManagerDeleteJobsByState_Active(t *testing.T) {
 }
 
 func TestManagerDeleteJobsByState_Aggregating(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.DeleteJobsByState(stateOpsTestQueue,
 		queue.StateAggregating)
@@ -160,7 +160,7 @@ func TestManagerDeleteJobsByState_Aggregating(t *testing.T) {
 // --- ListQueues with verification ---
 
 func TestManagerListQueues_ContainsTestQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupStateOpsQueue(t, manager)
 
 	client, _ := enqueueStateOpsJobs(t, 1)
