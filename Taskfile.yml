@@ -109,6 +109,21 @@ tasks:
           go work sync
         fi
 
+
+  submodule:update:
+    desc: Init/reset nested git submodules for this repository
+    cmds:
+      - |
+        set -eu
+        if [ ! -f .gitmodules ]; then
+          echo "No nested submodules."
+          exit 0
+        fi
+        git submodule sync --recursive
+        git submodule update --init --recursive --remote --force
+        git submodule foreach --recursive 'git reset --hard && git clean -fd' || true
+        git submodule sync --recursive
+        git submodule update --init --recursive --remote --force
   test:
     desc: Run tests (requires Redis to be running)
     cmds:
@@ -232,8 +247,14 @@ tasks:
     desc: Check if go.mod and go.sum are tidy
     cmds:
       - echo "Checking go.mod and go.sum are tidy..."
-      - go mod tidy
-      - git diff --exit-code -- go.mod go.sum
+      - |
+        before="$(mktemp)"
+        after="$(mktemp)"
+        trap 'rm -f "$before" "$after"' EXIT
+        git diff -- go.mod go.sum > "$before"
+        go mod tidy
+        git diff -- go.mod go.sum > "$after"
+        diff -u "$before" "$after"
 
 
   yamllint:
