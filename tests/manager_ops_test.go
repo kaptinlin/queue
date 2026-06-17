@@ -21,7 +21,7 @@ func cleanupManagerOpsQueue(t *testing.T, manager *queue.Manager) {
 // --- WorkerInfo ---
 
 func TestManagerWorkerInfo_NotFound(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.WorkerInfo("nonexistent-worker-id")
 	assert.ErrorIs(t, err, queue.ErrWorkerNotFound)
@@ -30,7 +30,7 @@ func TestManagerWorkerInfo_NotFound(t *testing.T) {
 // --- ListQueueStats ---
 
 func TestManagerListQueueStats(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	// Enqueue a job to ensure the queue exists.
@@ -52,7 +52,7 @@ func TestManagerListQueueStats(t *testing.T) {
 }
 
 func TestManagerListQueueStats_NonExistentQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.ListQueueStats("nonexistent_queue_xyz", 1)
 	assert.ErrorIs(t, err, queue.ErrQueueNotFound)
@@ -61,7 +61,7 @@ func TestManagerListQueueStats_NonExistentQueue(t *testing.T) {
 // --- PauseQueue / ResumeQueue ---
 
 func TestManagerPauseAndResumeQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
@@ -91,7 +91,7 @@ func TestManagerPauseAndResumeQueue(t *testing.T) {
 }
 
 func TestManagerPauseQueue_NonExistent(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	// asynq PauseQueue/UnpauseQueue may not error for non-existent queues.
 	// Just verify the call completes without panic.
@@ -99,7 +99,7 @@ func TestManagerPauseQueue_NonExistent(t *testing.T) {
 }
 
 func TestManagerResumeQueue_NonExistent(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_ = manager.ResumeQueue("nonexistent_queue_xyz")
 }
@@ -107,7 +107,7 @@ func TestManagerResumeQueue_NonExistent(t *testing.T) {
 // --- RunJob ---
 
 func TestManagerRunJob(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	// Enqueue a scheduled job (future).
@@ -120,7 +120,7 @@ func TestManagerRunJob(t *testing.T) {
 }
 
 func TestManagerRunJob_NotFound(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	// Ensure queue exists first.
@@ -134,7 +134,7 @@ func TestManagerRunJob_NotFound(t *testing.T) {
 // --- ArchiveJob ---
 
 func TestManagerArchiveJob(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
@@ -145,7 +145,7 @@ func TestManagerArchiveJob(t *testing.T) {
 }
 
 func TestManagerArchiveJob_NotFound(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	// Ensure queue exists first.
@@ -159,7 +159,7 @@ func TestManagerArchiveJob_NotFound(t *testing.T) {
 // --- DeleteJob ---
 
 func TestManagerDeleteJob(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
@@ -170,7 +170,7 @@ func TestManagerDeleteJob(t *testing.T) {
 }
 
 func TestManagerDeleteJob_NotFound(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	// Ensure queue exists first.
@@ -184,7 +184,7 @@ func TestManagerDeleteJob_NotFound(t *testing.T) {
 // --- CancelJob ---
 
 func TestManagerCancelJob(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	// CancelProcessing doesn't error for non-active jobs in asynq;
 	// it just sends a cancellation signal. Test that it doesn't error.
@@ -195,7 +195,7 @@ func TestManagerCancelJob(t *testing.T) {
 // --- BatchCancelJobs ---
 
 func TestManagerBatchCancelJobs_EmptySlice(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	result, err := manager.BatchCancelJobs([]string{})
 	assert.NoError(t, err)
@@ -204,7 +204,7 @@ func TestManagerBatchCancelJobs_EmptySlice(t *testing.T) {
 }
 
 func TestManagerBatchCancelJobs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	// CancelProcessing sends cancellation signals; doesn't error for IDs.
 	result, err := manager.BatchCancelJobs([]string{"id1", "id2"})
@@ -216,7 +216,7 @@ func TestManagerBatchCancelJobs(t *testing.T) {
 // --- CancelActiveJobs ---
 
 func TestManagerCancelActiveJobs_EmptyQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	// Ensure queue exists.
@@ -226,7 +226,7 @@ func TestManagerCancelActiveJobs_EmptyQueue(t *testing.T) {
 	assert.NoError(t, cleanupErr)
 
 	// No active jobs to cancel.
-	count, err := manager.CancelActiveJobs(managerOpsTestQueue, 10, 1)
+	count, err := manager.CancelActiveJobs(managerOpsTestQueue, 10)
 	assert.NoError(t, err)
 	assert.Equal(t, 0, count)
 }
@@ -234,7 +234,7 @@ func TestManagerCancelActiveJobs_EmptyQueue(t *testing.T) {
 // --- JobInfo ---
 
 func TestManagerJobInfo(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
@@ -247,7 +247,7 @@ func TestManagerJobInfo(t *testing.T) {
 }
 
 func TestManagerJobInfo_NotFound(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	// Ensure queue exists first.
@@ -258,10 +258,10 @@ func TestManagerJobInfo_NotFound(t *testing.T) {
 	assert.ErrorIs(t, err, queue.ErrJobNotFound)
 }
 
-// --- ListJobsByState additional states ---
+// --- ListJobs additional states ---
 
-func TestManagerListJobsByState_AllStates(t *testing.T) {
-	manager := setupTestManager()
+func TestManagerListJobs_AllStates(t *testing.T) {
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, _ := enqueueManagerOpsJobs(t, 2)
@@ -277,30 +277,42 @@ func TestManagerListJobsByState_AllStates(t *testing.T) {
 
 	for _, state := range states {
 		t.Run(string(state), func(t *testing.T) {
-			jobs, err := manager.ListJobsByState(managerOpsTestQueue, state, 10, 1)
+			jobs, err := manager.ListJobs(queue.JobQuery{
+				Queue: managerOpsTestQueue,
+				State: state,
+				Page:  queue.Page{Size: 10, Number: 1},
+			})
 			assert.NoError(t, err)
 			assert.NotNil(t, jobs)
 		})
 	}
 }
 
-func TestManagerListJobsByState_AggregatingRequiresGroup(t *testing.T) {
-	manager := setupTestManager()
+func TestManagerListJobs_AggregatingRequiresGroup(t *testing.T) {
+	manager := setupTestManager(t)
 
-	jobs, err := manager.ListJobsByState(managerOpsTestQueue, queue.StateAggregating, 10, 1)
+	jobs, err := manager.ListJobs(queue.JobQuery{
+		Queue: managerOpsTestQueue,
+		State: queue.StateAggregating,
+		Page:  queue.Page{Size: 10, Number: 1},
+	})
 	assert.ErrorIs(t, err, queue.ErrGroupRequiredForAggregation)
 	assert.Nil(t, jobs)
 }
 
-func TestManagerListJobsByState_InvalidState(t *testing.T) {
-	manager := setupTestManager()
+func TestManagerListJobs_InvalidState(t *testing.T) {
+	manager := setupTestManager(t)
 
-	_, err := manager.ListJobsByState(managerOpsTestQueue, "bogus", 10, 1)
+	_, err := manager.ListJobs(queue.JobQuery{
+		Queue: managerOpsTestQueue,
+		State: "bogus",
+		Page:  queue.Page{Size: 10, Number: 1},
+	})
 	assert.ErrorIs(t, err, queue.ErrInvalidJobState)
 }
 
-func TestManagerListJobsByState_ActiveState(t *testing.T) {
-	manager := setupTestManager()
+func TestManagerListJobs_ActiveState(t *testing.T) {
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	// Ensure queue exists.
@@ -308,7 +320,11 @@ func TestManagerListJobsByState_ActiveState(t *testing.T) {
 	defer func() { assert.NoError(t, client.Close()) }()
 
 	// Active state delegates to ListActiveJobs.
-	jobs, err := manager.ListJobsByState(managerOpsTestQueue, queue.StateActive, 10, 1)
+	jobs, err := manager.ListJobs(queue.JobQuery{
+		Queue: managerOpsTestQueue,
+		State: queue.StateActive,
+		Page:  queue.Page{Size: 10, Number: 1},
+	})
 	assert.NoError(t, err)
 	assert.NotNil(t, jobs)
 }
@@ -316,13 +332,13 @@ func TestManagerListJobsByState_ActiveState(t *testing.T) {
 // --- ListActiveJobs ---
 
 func TestManagerListActiveJobs_NoActiveJobs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, _ := enqueueManagerOpsJobs(t, 1)
 	defer func() { assert.NoError(t, client.Close()) }()
 
-	jobs, err := manager.ListActiveJobs(managerOpsTestQueue, 10, 1)
+	jobs, err := manager.ListActiveJobs(managerOpsTestQueue, queue.Page{Size: 10, Number: 1})
 	assert.NoError(t, err)
 	assert.Empty(t, jobs)
 }
@@ -330,7 +346,7 @@ func TestManagerListActiveJobs_NoActiveJobs(t *testing.T) {
 // --- QueueInfo non-existent ---
 
 func TestManagerQueueInfo_NonExistent(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	_, err := manager.QueueInfo("nonexistent_queue_xyz")
 	assert.ErrorIs(t, err, queue.ErrQueueNotFound)
@@ -339,7 +355,7 @@ func TestManagerQueueInfo_NonExistent(t *testing.T) {
 // --- DeleteQueue ---
 
 func TestManagerDeleteQueue_NotEmpty(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, _ := enqueueManagerOpsJobs(t, 1)
@@ -350,7 +366,7 @@ func TestManagerDeleteQueue_NotEmpty(t *testing.T) {
 }
 
 func TestManagerDeleteQueue_NonExistent(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	err := manager.DeleteQueue("nonexistent_queue_xyz", false)
 	assert.ErrorIs(t, err, queue.ErrQueueNotFound)
@@ -359,7 +375,7 @@ func TestManagerDeleteQueue_NonExistent(t *testing.T) {
 // --- RedisInfo ---
 
 func TestManagerRedisInfo(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	info, err := manager.RedisInfo(context.Background())
 	require.NoError(t, err)
@@ -373,7 +389,7 @@ func TestManagerRedisInfo(t *testing.T) {
 // --- Aggregating operations ---
 
 func TestManagerRunAggregatingJobs_EmptyQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	// Ensure queue exists.
@@ -389,7 +405,7 @@ func TestManagerRunAggregatingJobs_EmptyQueue(t *testing.T) {
 }
 
 func TestManagerArchiveAggregatingJobs_EmptyQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
@@ -403,7 +419,7 @@ func TestManagerArchiveAggregatingJobs_EmptyQueue(t *testing.T) {
 }
 
 func TestManagerDeleteAggregatingJobs_EmptyQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerOpsQueue(t, manager)
 
 	client, ids := enqueueManagerOpsJobs(t, 1)
@@ -417,9 +433,9 @@ func TestManagerDeleteAggregatingJobs_EmptyQueue(t *testing.T) {
 }
 
 func TestManagerAggregatingJobs_EmptyGroup(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
-	_, err := manager.ListAggregatingJobs(managerOpsTestQueue, "", 10, 1)
+	_, err := manager.ListAggregatingJobs(managerOpsTestQueue, "", queue.Page{Size: 10, Number: 1})
 	assert.ErrorIs(t, err, queue.ErrGroupRequiredForAggregation)
 
 	count, err := manager.RunAggregatingJobs(managerOpsTestQueue, "")

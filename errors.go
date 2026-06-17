@@ -18,12 +18,14 @@ var (
 	ErrInvalidJobOptions = errors.New("invalid job options")
 	// ErrInvalidHandler is returned when a nil or otherwise invalid handler is used.
 	ErrInvalidHandler = errors.New("invalid handler")
+	// ErrInvalidMiddleware is returned when nil middleware is used.
+	ErrInvalidMiddleware = errors.New("invalid middleware")
 	// ErrNoHandlerFuncSpecified is returned when a handler has no processing function.
 	ErrNoHandlerFuncSpecified = errors.New("handler requires a processing function")
-	// ErrInvalidAsynqTask is returned when an Asynq task cannot produce a delivery.
-	ErrInvalidAsynqTask = errors.New("invalid asynq task")
-	// ErrJobProcessingTimeout is returned when a job exceeds its
-	// configured processing timeout.
+	// ErrInvalidDelivery is returned when a backend task cannot produce a delivery.
+	ErrInvalidDelivery = errors.New("invalid delivery")
+	// ErrJobProcessingTimeout wraps context.DeadlineExceeded when a
+	// handler returns after its configured processing deadline.
 	ErrJobProcessingTimeout = errors.New("job processing exceeded timeout")
 	// ErrSerializationFailure is returned when job payload serialization
 	// or deserialization fails.
@@ -36,9 +38,11 @@ var (
 	ErrFailedToWriteResult = errors.New("failed to write job result")
 	// ErrEnqueueJob is returned when the client fails to enqueue a job.
 	ErrEnqueueJob = errors.New("unable to enqueue job")
-	// ErrTransientIssue indicates a temporary failure that should be
-	// retried without counting against the job's retry limit.
-	ErrTransientIssue = errors.New("transient issue, job will retry without affecting retry count")
+	// ErrInvalidClientOptions is returned when client options contain invalid values.
+	ErrInvalidClientOptions = errors.New("invalid client options")
+	// ErrRetryWithoutFailure is returned by a handler to retry the job
+	// without counting the error as a job failure.
+	ErrRetryWithoutFailure = errors.New("retry without recording failure")
 	// ErrInvalidJobState is returned when an invalid [JobState] is
 	// provided to a manager operation.
 	ErrInvalidJobState = errors.New("invalid job state")
@@ -58,6 +62,8 @@ var (
 	// ErrInvalidWorkerConcurrency is returned when the worker concurrency
 	// is set to zero or a negative value.
 	ErrInvalidWorkerConcurrency = errors.New("worker requires a positive concurrency value")
+	// ErrInvalidWorkerStopTimeout is returned when worker stop timeout is negative.
+	ErrInvalidWorkerStopTimeout = errors.New("worker stop timeout cannot be negative")
 	// ErrWorkerAlreadyStarted is returned when [Worker.Run] is called
 	// on a worker that is already running.
 	ErrWorkerAlreadyStarted = errors.New("worker already started")
@@ -129,12 +135,6 @@ var (
 	// ErrGroupRequiredForAggregation is returned when an aggregating
 	// operation is attempted without specifying a group identifier.
 	ErrGroupRequiredForAggregation = errors.New("group identifier required for aggregating jobs")
-	// ErrInvalidManagerClient is returned when a manager is constructed
-	// without a Redis client.
-	ErrInvalidManagerClient = errors.New("manager requires redis client")
-	// ErrInvalidManagerInspector is returned when a manager is constructed
-	// without an Asynq inspector.
-	ErrInvalidManagerInspector = errors.New("manager requires inspector")
 	// ErrUnsupportedJobStateForAction is returned when the job state
 	// does not support the requested action.
 	ErrUnsupportedJobStateForAction = errors.New("unsupported job state for the requested action")
@@ -143,6 +143,15 @@ var (
 	// ErrQueueNotEmpty is returned when attempting to delete a queue
 	// that still contains jobs without using force mode.
 	ErrQueueNotEmpty = errors.New("queue is not empty")
+	// ErrInvalidPage is returned when a manager list query has invalid pagination.
+	ErrInvalidPage = errors.New("invalid page")
+	// ErrInvalidBatchSize is returned when a manager batch operation has an invalid size.
+	ErrInvalidBatchSize = errors.New("invalid batch size")
+)
+
+var (
+	errInvalidManagerClient    = errors.New("manager requires redis client")
+	errInvalidManagerInspector = errors.New("manager requires inspector")
 )
 
 // ErrSkipRetry indicates a condition to skip retries and move the job to the archive.
@@ -153,27 +162,39 @@ func NewSkipRetryError(reason string) error {
 	return fmt.Errorf("skip retry due to: %s: %w", reason, ErrSkipRetry)
 }
 
-// ErrRateLimit defines a custom error type for rate limiting scenarios.
-//
-//nolint:errname // Preserve the existing exported API for rate limit errors.
-type ErrRateLimit struct {
+// NewRetryWithoutFailureError wraps a cause with [ErrRetryWithoutFailure].
+func NewRetryWithoutFailureError(cause error) error {
+	if cause == nil {
+		return ErrRetryWithoutFailure
+	}
+	return fmt.Errorf("%w: %w", ErrRetryWithoutFailure, cause)
+}
+
+// RateLimitError reports a business-level rate limit that should retry later
+// without recording a job failure.
+type RateLimitError struct {
 	RetryAfter time.Duration // Suggested time to wait before retrying the operation.
 }
 
-// Error implements the error interface for ErrRateLimit.
-func (e *ErrRateLimit) Error() string {
+// Error implements the error interface for RateLimitError.
+func (e *RateLimitError) Error() string {
 	return fmt.Sprintf("rate limited: retry after %v", e.RetryAfter)
 }
 
-// NewErrRateLimit constructs a new ErrRateLimit with a specified retry delay.
-func NewErrRateLimit(retryAfter time.Duration) *ErrRateLimit {
-	return &ErrRateLimit{
+// Is reports RateLimitError as a retry-without-failure condition.
+func (e *RateLimitError) Is(target error) bool {
+	return target == ErrRetryWithoutFailure
+}
+
+// NewRateLimitError constructs a new RateLimitError with a specified retry delay.
+func NewRateLimitError(retryAfter time.Duration) *RateLimitError {
+	return &RateLimitError{
 		RetryAfter: retryAfter,
 	}
 }
 
-// IsErrRateLimit checks if the provided error is or wraps an ErrRateLimit error.
-func IsErrRateLimit(err error) bool {
-	_, ok := errors.AsType[*ErrRateLimit](err)
+// IsRateLimitError checks if the provided error is or wraps a RateLimitError.
+func IsRateLimitError(err error) bool {
+	_, ok := errors.AsType[*RateLimitError](err)
 	return ok
 }

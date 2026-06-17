@@ -18,7 +18,10 @@ func main() {
 
 func run() error {
 	// Set up Redis configuration and client.
-	redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	redisConfig, err := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	if err != nil {
+		return fmt.Errorf("invalid redis config: %w", err)
+	}
 	client, err := queue.NewClient(redisConfig, queue.WithClientRetention(24*time.Hour))
 	if err != nil {
 		return fmt.Errorf("failed to create client: %w", err)

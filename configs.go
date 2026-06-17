@@ -1,10 +1,11 @@
 package queue
 
 import (
+	"context"
 	"errors"
+	"sort"
 	"sync"
-
-	"github.com/hibiken/asynq"
+	"time"
 )
 
 // Scheduler configuration errors.
@@ -12,93 +13,138 @@ var (
 	// ErrNoScheduleIDSpecified is returned when a schedule registration has no identifier.
 	ErrNoScheduleIDSpecified = errors.New("schedule requires a specified identifier")
 	// ErrScheduleAlreadyExists is returned when attempting to register a schedule
-	// that already exists in the config provider.
+	// that already exists in the schedule store.
 	ErrScheduleAlreadyExists = errors.New("schedule already exists")
 	// ErrScheduleNotFound is returned when attempting to unregister a schedule
-	// that does not exist in the config provider.
+	// that does not exist in the schedule store.
 	ErrScheduleNotFound = errors.New("schedule not found")
+	// ErrInvalidScheduleKind is returned when a schedule has an unknown kind.
+	ErrInvalidScheduleKind = errors.New("invalid schedule kind")
 )
 
-// ConfigProvider defines the interface for managing periodic job configurations.
-// It extends [asynq.PeriodicTaskConfigProvider] with registration and
-// unregistration capabilities.
-type ConfigProvider interface {
-	asynq.PeriodicTaskConfigProvider
-	RegisterCronJob(identifier, spec string, job *Job) (string, error)
-	UnregisterJob(identifier string) error
+// ScheduleKind identifies how a schedule is triggered.
+type ScheduleKind string
+
+const (
+	// ScheduleCron runs a job on a cron expression.
+	ScheduleCron ScheduleKind = "cron"
+	// ScheduleInterval runs a job at a fixed interval.
+	ScheduleInterval ScheduleKind = "interval"
+)
+
+// Schedule describes one persistent scheduler entry.
+type Schedule struct {
+	ID       string
+	Kind     ScheduleKind
+	CronSpec string
+	Interval time.Duration
+	Job      *Job
+	Enabled  bool
 }
 
-type jobConfig struct {
-	job      *Job
-	schedule string
+// ScheduleStore stores scheduler entries without exposing the queue backend.
+type ScheduleStore interface {
+	Put(ctx context.Context, schedule Schedule) error
+	Delete(ctx context.Context, id string) error
+	List(ctx context.Context) ([]Schedule, error)
 }
 
-// MemoryConfigProvider stores and provides job configurations for periodic execution.
-type MemoryConfigProvider struct {
-	mu   sync.Mutex
-	jobs map[string]jobConfig
+// MemoryScheduleStore stores schedules in memory for the lifetime of the process.
+type MemoryScheduleStore struct {
+	mu        sync.Mutex
+	schedules map[string]Schedule
 }
 
-// NewMemoryConfigProvider initializes a new instance of MemoryConfigProvider.
-func NewMemoryConfigProvider() *MemoryConfigProvider {
-	return &MemoryConfigProvider{
-		jobs: make(map[string]jobConfig),
+// NewMemoryScheduleStore creates an empty in-memory schedule store.
+func NewMemoryScheduleStore() *MemoryScheduleStore {
+	return &MemoryScheduleStore{
+		schedules: make(map[string]Schedule),
 	}
 }
 
-// RegisterCronJob schedules a new job using a cron specification.
-func (m *MemoryConfigProvider) RegisterCronJob(identifier, spec string, job *Job) (string, error) {
+// Put stores a new schedule.
+func (m *MemoryScheduleStore) Put(ctx context.Context, schedule Schedule) error {
+	if err := validateContext(ctx); err != nil {
+		return err
+	}
+	if err := validateSchedule(schedule); err != nil {
+		return err
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if identifier == "" {
-		return "", ErrNoScheduleIDSpecified
+	if _, exists := m.schedules[schedule.ID]; exists {
+		return ErrScheduleAlreadyExists
 	}
-	if job == nil {
-		return "", ErrInvalidJob
-	}
-
-	if _, exists := m.jobs[identifier]; exists {
-		return "", ErrScheduleAlreadyExists
-	}
-
-	m.jobs[identifier] = jobConfig{
-		job:      job,
-		schedule: spec,
-	}
-
-	return identifier, nil
-}
-
-// UnregisterJob removes a job configuration based on its identifier.
-func (m *MemoryConfigProvider) UnregisterJob(identifier string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	if _, exists := m.jobs[identifier]; !exists {
-		return ErrScheduleNotFound
-	}
-
-	delete(m.jobs, identifier)
+	m.schedules[schedule.ID] = schedule
 	return nil
 }
 
-// GetConfigs returns a slice of asynq.PeriodicTaskConfig for all registered jobs.
-func (m *MemoryConfigProvider) GetConfigs() ([]*asynq.PeriodicTaskConfig, error) {
+// Delete removes a schedule by ID.
+func (m *MemoryScheduleStore) Delete(ctx context.Context, id string) error {
+	if err := validateContext(ctx); err != nil {
+		return err
+	}
+	if id == "" {
+		return ErrNoScheduleIDSpecified
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	configs := make([]*asynq.PeriodicTaskConfig, 0, len(m.jobs))
-	for _, config := range m.jobs {
-		task, opts, err := config.job.ConvertToAsynqTask()
-		if err != nil {
-			return nil, err
-		}
-		configs = append(configs, &asynq.PeriodicTaskConfig{
-			Cronspec: config.schedule,
-			Task:     task,
-			Opts:     opts,
-		})
+	if _, exists := m.schedules[id]; !exists {
+		return ErrScheduleNotFound
 	}
-	return configs, nil
+	delete(m.schedules, id)
+	return nil
+}
+
+// List returns all schedules in deterministic ID order.
+func (m *MemoryScheduleStore) List(ctx context.Context) ([]Schedule, error) {
+	if err := validateContext(ctx); err != nil {
+		return nil, err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	schedules := make([]Schedule, 0, len(m.schedules))
+	for _, schedule := range m.schedules {
+		schedules = append(schedules, schedule)
+	}
+	sort.Slice(schedules, func(i, j int) bool {
+		return schedules[i].ID < schedules[j].ID
+	})
+	return schedules, nil
+}
+
+func validateContext(ctx context.Context) error {
+	if ctx == nil {
+		return ErrInvalidContext
+	}
+	return ctx.Err()
+}
+
+func validateSchedule(schedule Schedule) error {
+	if schedule.ID == "" {
+		return ErrNoScheduleIDSpecified
+	}
+	if schedule.Job == nil {
+		return ErrInvalidJob
+	}
+
+	switch schedule.Kind {
+	case ScheduleCron:
+		if schedule.CronSpec == "" {
+			return ErrInvalidCronSpec
+		}
+	case ScheduleInterval:
+		if schedule.Interval <= 0 {
+			return ErrInvalidPeriodicInterval
+		}
+	default:
+		return ErrInvalidScheduleKind
+	}
+	return nil
 }

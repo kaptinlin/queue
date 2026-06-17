@@ -97,17 +97,22 @@ func (h *Handler) validate() error {
 	if h.jobTimeout < 0 {
 		return fmt.Errorf("%w: timeout cannot be negative", ErrInvalidJobOptions)
 	}
+	for _, middleware := range h.middlewares {
+		if middleware == nil {
+			return ErrInvalidMiddleware
+		}
+	}
 	return nil
 }
 
-// WithRateLimiter configures a rate limiter for the handler to control the rate of job processing.
-func WithRateLimiter(limiter *rate.Limiter) HandlerOption {
+// WithLocalRateLimiter configures in-process backpressure before handler execution.
+func WithLocalRateLimiter(limiter *rate.Limiter) HandlerOption {
 	return handlerOption(func(h *Handler) {
 		h.limiter = limiter
 	})
 }
 
-// WithJobTimeout sets a timeout for job processing, terminating the job if it exceeds this duration.
+// WithJobTimeout sets the processing context deadline for a handler attempt.
 func WithJobTimeout(d time.Duration) HandlerOption {
 	return handlerOption(func(h *Handler) {
 		h.jobTimeout = d
@@ -155,31 +160,24 @@ func (h *Handler) Process(ctx context.Context, delivery *Delivery) error {
 	return h.processJob(ctx, delivery)
 }
 
-// processWithTimeout executes the handler's job processing function with a timeout.
+// processWithTimeout runs the handler with a bounded context.
 func (h *Handler) processWithTimeout(ctx context.Context, delivery *Delivery) error {
 	ctx, cancel := context.WithTimeout(ctx, h.jobTimeout)
 	defer cancel()
 
-	done := make(chan error, DefaultHandlerChannelBuffer)
-	go func() {
-		done <- h.processJob(ctx, delivery)
-	}()
-
-	select {
-	case err := <-done:
-		return err
-	case <-ctx.Done():
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return fmt.Errorf("%w: %w", ErrJobProcessingTimeout, ctx.Err())
-		}
-		return ctx.Err()
+	err := h.processJob(ctx, delivery)
+	if errors.Is(err, context.DeadlineExceeded) {
+		return fmt.Errorf("%w: %w", ErrJobProcessingTimeout, err)
 	}
+	return err
 }
 
 // processJob executes the handler's job processing function, applying rate limiting if configured.
 func (h *Handler) processJob(ctx context.Context, delivery *Delivery) error {
-	if h.limiter != nil && !h.limiter.Allow() {
-		return &ErrRateLimit{RetryAfter: DefaultRateLimitRetryAfter}
+	if h.limiter != nil {
+		if err := h.limiter.Wait(ctx); err != nil {
+			return err
+		}
 	}
 	return h.handle(ctx, delivery)
 }

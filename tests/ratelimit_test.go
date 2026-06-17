@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"errors"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -16,245 +15,92 @@ import (
 	"github.com/kaptinlin/queue"
 )
 
-// TestWorkerRateLimiterBlocksBeforeHandler verifies that the worker-level rate
-// limiter is checked before the handler is invoked. When the worker limiter is
-// exhausted, jobs should be rate-limited without ever reaching the handler.
-func TestWorkerRateLimiterBlocksBeforeHandler(t *testing.T) {
+func TestWorkerLocalRateLimiterWaitsBeforeHandler(t *testing.T) {
 	redisConfig := getRedisConfig()
 
-	var handlerCalls atomic.Int64
-
-	// Worker limiter: 1 token, burst 1 — only the first job passes.
-	workerLimiter := rate.NewLimiter(rate.Every(10*time.Second), 1)
-
+	var processed atomic.Int64
+	limiter := rate.NewLimiter(rate.Every(40*time.Millisecond), 1)
 	worker, err := queue.NewWorker(redisConfig,
-		queue.WithWorkerRateLimiter(workerLimiter),
+		queue.WithWorkerLocalRateLimiter(limiter),
+		queue.WithWorkerConcurrency(1),
 	)
 	require.NoError(t, err)
 
-	jobType := "ratelimit_worker_test"
+	jobType := "ratelimit_worker_wait_test"
 	var wg sync.WaitGroup
-
 	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
 		defer wg.Done()
-		handlerCalls.Add(1)
+		processed.Add(1)
 		return nil
 	})
 	require.NoError(t, err)
 
 	runWorker(t, worker)
 
-	time.Sleep(1 * time.Second)
-
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err)
 	defer func() {
 		assert.NoError(t, client.Close())
 	}()
 
-	// Enqueue first job — should be processed.
-	wg.Add(1)
+	wg.Add(2)
+	start := time.Now()
 	_, err = client.Enqueue(jobType, map[string]any{"seq": 1})
+	require.NoError(t, err)
+	_, err = client.Enqueue(jobType, map[string]any{"seq": 2})
 	require.NoError(t, err)
 
 	wg.Wait()
-	assert.Equal(t, int64(1), handlerCalls.Load(),
-		"exactly one job should reach the handler")
+	assert.Equal(t, int64(2), processed.Load())
+	assert.GreaterOrEqual(t, time.Since(start), 30*time.Millisecond)
 }
 
-// TestHandlerRateLimiterIndependentOfWorker verifies that a handler-level rate
-// limiter blocks jobs even when no worker-level limiter is configured.
-func TestHandlerRateLimiterIndependentOfWorker(t *testing.T) {
-	redisConfig := getRedisConfig()
-
-	var processed atomic.Int64
-
-	// Handler limiter: 1 token, burst 1.
-	handlerLimiter := rate.NewLimiter(rate.Every(10*time.Second), 1)
-
-	worker, err := queue.NewWorker(redisConfig)
-	require.NoError(t, err)
-
-	jobType := "ratelimit_handler_only_test"
-	var wg sync.WaitGroup
-
-	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
-		defer wg.Done()
-		processed.Add(1)
-		return nil
-	}, queue.WithRateLimiter(handlerLimiter))
-	require.NoError(t, err)
-
-	runWorker(t, worker)
-
-	time.Sleep(1 * time.Second)
-
-	client, err := queue.NewClient(redisConfig)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, client.Close())
-	}()
-
-	// Enqueue first job — passes handler limiter.
-	wg.Add(1)
-	_, err = client.Enqueue(jobType, map[string]any{"seq": 1})
-	require.NoError(t, err)
-
-	wg.Wait()
-	assert.Equal(t, int64(1), processed.Load(),
-		"first job should be processed by handler")
-}
-
-// TestDualRateLimiterWorkerBlocksFirst verifies that when both worker-level and
-// handler-level limiters are configured, the worker-level limiter is checked
-// first. If the worker limiter denies the request, the handler limiter token is
-// not consumed.
-func TestDualRateLimiterWorkerBlocksFirst(t *testing.T) {
-	redisConfig := getRedisConfig()
-
-	var handlerCalls atomic.Int64
-
-	// Worker limiter: burst 1 — blocks after first job.
-	workerLimiter := rate.NewLimiter(rate.Every(10*time.Second), 1)
-	// Handler limiter: burst 5 — generous, should not be the bottleneck.
-	handlerLimiter := rate.NewLimiter(rate.Every(10*time.Second), 5)
-
-	worker, err := queue.NewWorker(redisConfig,
-		queue.WithWorkerRateLimiter(workerLimiter),
-	)
-	require.NoError(t, err)
-
-	jobType := "ratelimit_dual_worker_first_test"
-	var wg sync.WaitGroup
-
-	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
-		defer wg.Done()
-		handlerCalls.Add(1)
-		return nil
-	}, queue.WithRateLimiter(handlerLimiter))
-	require.NoError(t, err)
-
-	runWorker(t, worker)
-
-	time.Sleep(1 * time.Second)
-
-	client, err := queue.NewClient(redisConfig)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, client.Close())
-	}()
-
-	// First job passes both limiters.
-	wg.Add(1)
-	_, err = client.Enqueue(jobType, map[string]any{"seq": 1})
-	require.NoError(t, err)
-
-	wg.Wait()
-
-	// Worker limiter is now exhausted. Handler limiter still has 4 tokens.
-	// The second job should be blocked by the worker limiter.
-	assert.Equal(t, int64(1), handlerCalls.Load(),
-		"only one job should pass through the worker limiter")
-}
-
-// TestDualRateLimiterHandlerBlocksSecond verifies that when the worker-level
-// limiter allows a job through but the handler-level limiter is exhausted, the
-// job is still rate-limited with an ErrRateLimit error.
-func TestDualRateLimiterHandlerBlocksSecond(t *testing.T) {
-	// Use handler.Process directly to test the handler-level limiter in
-	// isolation after the worker-level check would have passed.
-	handlerLimiter := rate.NewLimiter(rate.Every(10*time.Second), 1)
-
-	handler := newHandler(t, "ratelimit_dual_handler_test",
+func TestHandlerLocalRateLimiterWaitsIndependently(t *testing.T) {
+	limiter := rate.NewLimiter(rate.Every(20*time.Millisecond), 1)
+	handler := newHandler(t, "ratelimit_handler_wait_test",
 		func(context.Context, *queue.Delivery) error {
 			return nil
 		},
-		queue.WithRateLimiter(handlerLimiter),
+		queue.WithLocalRateLimiter(limiter),
 	)
 
-	// First call consumes the handler limiter token.
+	require.NoError(t, handler.Process(context.Background(), nil))
+
+	start := time.Now()
 	err := handler.Process(context.Background(), nil)
-	require.NoError(t, err, "first call should pass handler limiter")
-
-	// Second call should be rate-limited by the handler limiter.
-	err = handler.Process(context.Background(), nil)
-	rateLimitErr, ok := errors.AsType[*queue.ErrRateLimit](err)
-	require.True(t, ok,
-		"second call should return ErrRateLimit from handler limiter")
-	assert.Equal(t, queue.DefaultRateLimitRetryAfter, rateLimitErr.RetryAfter,
-		"RetryAfter should match DefaultRateLimitRetryAfter")
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, time.Since(start), 15*time.Millisecond)
 }
 
-// TestDualRateLimiterBothAllow verifies that when both limiters have sufficient
-// capacity, jobs are processed successfully through both layers.
-func TestDualRateLimiterBothAllow(t *testing.T) {
-	redisConfig := getRedisConfig()
-
-	var processed atomic.Int64
-	const jobCount = 3
-
-	// Both limiters generous enough for all jobs.
-	workerLimiter := rate.NewLimiter(rate.Limit(100), 10)
-	handlerLimiter := rate.NewLimiter(rate.Limit(100), 10)
-
-	worker, err := queue.NewWorker(redisConfig,
-		queue.WithWorkerRateLimiter(workerLimiter),
+func TestLocalRateLimiterReturnsContextErrorWhenWaitIsCanceled(t *testing.T) {
+	limiter := rate.NewLimiter(rate.Every(time.Second), 1)
+	handler := newHandler(t, "ratelimit_handler_cancel_test",
+		func(context.Context, *queue.Delivery) error {
+			return nil
+		},
+		queue.WithLocalRateLimiter(limiter),
 	)
-	require.NoError(t, err)
 
-	jobType := "ratelimit_dual_both_allow_test"
-	var wg sync.WaitGroup
+	require.NoError(t, handler.Process(context.Background(), nil))
 
-	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
-		defer wg.Done()
-		processed.Add(1)
-		return nil
-	}, queue.WithRateLimiter(handlerLimiter))
-	require.NoError(t, err)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
 
-	runWorker(t, worker)
-
-	time.Sleep(1 * time.Second)
-
-	client, err := queue.NewClient(redisConfig)
-	require.NoError(t, err)
-	defer func() {
-		assert.NoError(t, client.Close())
-	}()
-
-	for i := range jobCount {
-		wg.Add(1)
-		_, err = client.Enqueue(jobType, map[string]any{"seq": i})
-		require.NoError(t, err)
-	}
-
-	wg.Wait()
-	assert.Equal(t, int64(jobCount), processed.Load(),
-		"all jobs should be processed when both limiters allow")
+	err := handler.Process(ctx, nil)
+	assert.Error(t, err)
+	assert.False(t, queue.IsRateLimitError(err))
 }
 
-// TestRateLimitedJobIsNotCountedAsFailure verifies that rate-limited jobs are
-// not counted as failures (isFailure returns false for ErrRateLimit). This
-// ensures rate-limited jobs can retry indefinitely without exhausting MaxRetries.
-func TestRateLimitedJobIsNotCountedAsFailure(t *testing.T) {
-	err := queue.NewErrRateLimit(5 * time.Second)
-	assert.False(t, queue.IsErrRateLimit(nil),
-		"nil error should not be a rate limit error")
-	assert.True(t, queue.IsErrRateLimit(err),
-		"ErrRateLimit should be detected by IsErrRateLimit")
+func TestRateLimitErrorIsNotCountedAsFailure(t *testing.T) {
+	err := queue.NewRateLimitError(5 * time.Second)
+
+	assert.False(t, queue.IsRateLimitError(nil))
+	assert.True(t, queue.IsRateLimitError(err))
 }
 
-// TestDualRateLimiterErrorHandlerReceivesRateLimitError verifies that the
-// worker's custom error handler receives ErrRateLimit errors from the
-// handler-level limiter. Note: worker-level rate limit errors are returned
-// before job reconstruction, so they bypass the custom error handler by design.
-func TestDualRateLimiterErrorHandlerReceivesRateLimitError(t *testing.T) {
+func TestBusinessRateLimitErrorReachesWorkerErrorHandler(t *testing.T) {
 	redisConfig := getRedisConfig()
-
 	errorHandler := NewCustomWorkerErrorHandler()
-
-	// Handler limiter: burst 1 — blocks after first job.
-	handlerLimiter := rate.NewLimiter(rate.Every(10*time.Second), 1)
 
 	worker, err := queue.NewWorker(redisConfig,
 		queue.WithWorkerErrorHandler(errorHandler),
@@ -262,18 +108,13 @@ func TestDualRateLimiterErrorHandlerReceivesRateLimitError(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	jobType := "ratelimit_error_handler_test"
-	var wg sync.WaitGroup
-
+	jobType := "ratelimit_business_error_test"
 	err = worker.Register(jobType, func(context.Context, *queue.Delivery) error {
-		defer wg.Done()
-		return nil
-	}, queue.WithRateLimiter(handlerLimiter))
+		return queue.NewRateLimitError(50 * time.Millisecond)
+	})
 	require.NoError(t, err)
 
 	runWorker(t, worker)
-
-	time.Sleep(1 * time.Second)
 
 	client, err := queue.NewClient(redisConfig)
 	require.NoError(t, err)
@@ -281,23 +122,10 @@ func TestDualRateLimiterErrorHandlerReceivesRateLimitError(t *testing.T) {
 		assert.NoError(t, client.Close())
 	}()
 
-	// First job passes the handler limiter.
-	wg.Add(1)
 	_, err = client.Enqueue(jobType, map[string]any{"seq": 1})
 	require.NoError(t, err)
-	wg.Wait()
 
-	// Second job will be rate-limited by the handler limiter.
-	_, err = client.Enqueue(jobType, map[string]any{"seq": 2})
-	require.NoError(t, err)
-
-	// Wait for the worker to attempt processing the second job.
-	time.Sleep(3 * time.Second)
-
-	// The error handler should have captured at least one rate limit error.
-	errorHandler.mu.Lock()
-	defer errorHandler.mu.Unlock()
-
-	assert.True(t, slices.ContainsFunc(errorHandler.errors, queue.IsErrRateLimit),
-		"error handler should receive ErrRateLimit from handler limiter")
+	require.Eventually(t, func() bool {
+		return slices.ContainsFunc(errorHandler.Errors(), queue.IsRateLimitError)
+	}, 3*time.Second, 20*time.Millisecond)
 }

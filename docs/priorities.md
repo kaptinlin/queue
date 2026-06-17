@@ -21,7 +21,10 @@ import (
 )
 
 func main() {
-    redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+    redisConfig, err := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+    if err != nil {
+        panic(err)
+    }
 
     worker, err := queue.NewWorker(redisConfig,
         queue.WithWorkerQueue("critical", 6), // High priority

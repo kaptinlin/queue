@@ -14,7 +14,10 @@ import (
 
 func main() {
 	// Initialize Redis configuration and worker.
-	redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	redisConfig, err := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	if err != nil {
+		log.Fatalf("Invalid Redis config: %v", err)
+	}
 	worker, err := queue.NewWorker(redisConfig)
 	if err != nil {
 		log.Fatalf("Failed to create worker: %v", err)

@@ -2,7 +2,6 @@ package tests
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
@@ -18,13 +17,15 @@ func TestNewHandler(t *testing.T) {
 	assert.Equal(t, "test", handler.Type(), "NewHandler() Type should match")
 }
 
-func TestHandlerWithRateLimiter(t *testing.T) {
-	limiter := rate.NewLimiter(1, 1)
-	handler := newHandler(t, "test", func(context.Context, *queue.Delivery) error { return nil }, queue.WithRateLimiter(limiter))
+func TestHandlerWithLocalRateLimiter(t *testing.T) {
+	limiter := rate.NewLimiter(rate.Every(15*time.Millisecond), 1)
+	handler := newHandler(t, "test", func(context.Context, *queue.Delivery) error { return nil }, queue.WithLocalRateLimiter(limiter))
 	require.NoError(t, handler.Process(context.Background(), nil))
 
+	start := time.Now()
 	err := handler.Process(context.Background(), nil)
-	assert.True(t, queue.IsErrRateLimit(err))
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, time.Since(start), 10*time.Millisecond)
 }
 
 func TestHandlerWithJobTimeout(t *testing.T) {
@@ -71,26 +72,29 @@ func TestHandlerProcessWithTimeout(t *testing.T) {
 	handler := newHandler(t, "test", func(ctx context.Context, _ *queue.Delivery) error {
 		<-ctx.Done()
 		time.Sleep(25 * time.Millisecond)
-		return nil
+		return ctx.Err()
 	}, queue.WithJobTimeout(10*time.Millisecond))
 
+	start := time.Now()
 	err := handler.Process(context.Background(), nil)
+	assert.GreaterOrEqual(t, time.Since(start), 25*time.Millisecond)
 	assert.ErrorIs(t, err, queue.ErrJobProcessingTimeout)
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
-func TestHandlerProcessWithRateLimiter(t *testing.T) {
-	limiter := rate.NewLimiter(rate.Every(10*time.Second), 1) // Allow only 1 operation per 10 seconds
+func TestHandlerProcessWithLocalRateLimiter(t *testing.T) {
+	limiter := rate.NewLimiter(rate.Every(time.Second), 1)
 	handler := newHandler(t, "test", func(context.Context, *queue.Delivery) error {
 		return nil
-	}, queue.WithRateLimiter(limiter))
+	}, queue.WithLocalRateLimiter(limiter))
 
-	// The first call should pass due to the rate limiter allowance
 	err := handler.Process(context.Background(), nil)
 	require.NoError(t, err, "Process() should not return error for first call")
 
-	// The second call should be limited
-	err = handler.Process(context.Background(), nil)
-	_, ok := errors.AsType[*queue.ErrRateLimit](err)
-	assert.True(t, ok, "Process() should return ErrRateLimit error")
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond)
+	defer cancel()
+
+	err = handler.Process(ctx, nil)
+	assert.Error(t, err)
+	assert.False(t, queue.IsRateLimitError(err))
 }

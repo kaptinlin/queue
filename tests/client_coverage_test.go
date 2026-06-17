@@ -30,9 +30,9 @@ func TestNewClient_NilRedisConfig(t *testing.T) {
 }
 
 func TestNewClient_InvalidRedisConfig(t *testing.T) {
-	cfg := &queue.RedisConfig{Network: "bad", Addr: ""}
-	_, err := queue.NewClient(cfg)
-	assert.Error(t, err)
+	cfg, err := queue.NewRedisConfig(queue.WithRedisNetwork("bad"))
+	assert.Nil(t, cfg)
+	assert.ErrorIs(t, err, queue.ErrRedisUnsupportedNetwork)
 }
 
 // --- EnqueueJob with client retention ---
@@ -55,12 +55,15 @@ func TestClientEnqueueJob_ReportsRedisFailure(t *testing.T) {
 
 	logger := &mockLogger{}
 	handler := &recordingClientErrorHandler{}
-	client, err := queue.NewClient(queue.NewRedisConfig(
+	redisConfig, err := queue.NewRedisConfig(
 		queue.WithRedisAddress("127.0.0.1:1"),
 		queue.WithRedisDialTimeout(10*time.Millisecond),
 		queue.WithRedisReadTimeout(10*time.Millisecond),
 		queue.WithRedisWriteTimeout(10*time.Millisecond),
-	),
+	)
+	require.NoError(t, err)
+
+	client, err := queue.NewClient(redisConfig,
 		queue.WithClientLogger(logger),
 		queue.WithClientErrorHandler(handler),
 	)

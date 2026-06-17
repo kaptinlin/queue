@@ -76,7 +76,7 @@ func TestWorkerProcessesStringPayload(t *testing.T) {
 	const queueName = "worker_string_payload_test"
 	const jobType = "worker_string_payload"
 
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer func() {
 		_ = manager.DeleteQueue(queueName, true)
 	}()

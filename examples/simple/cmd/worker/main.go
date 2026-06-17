@@ -14,9 +14,12 @@ import (
 )
 
 func main() {
-	redisConfig := queue.NewRedisConfig(
+	redisConfig, err := queue.NewRedisConfig(
 		queue.WithRedisAddress("localhost:6379"),
 	)
+	if err != nil {
+		log.Fatalf("Invalid Redis config: %v", err)
+	}
 
 	worker, err := queue.NewWorker(redisConfig, queue.WithWorkerQueues(
 		map[string]int{

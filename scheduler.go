@@ -16,18 +16,18 @@ var ErrInvalidCronSpec = errors.New("invalid cron spec")
 
 // Scheduler manages periodic job scheduling.
 type Scheduler struct {
-	taskManager    *asynq.PeriodicTaskManager
-	configProvider ConfigProvider
-	started        atomic.Bool
-	stopped        atomic.Bool
+	taskManager *asynq.PeriodicTaskManager
+	store       ScheduleStore
+	started     atomic.Bool
+	stopped     atomic.Bool
 }
 
 // schedulerOptions contains options for the Scheduler.
 type schedulerOptions struct {
-	SyncInterval   time.Duration
-	Location       *time.Location
-	ConfigProvider ConfigProvider
-	Logger         Logger
+	SyncInterval time.Duration
+	Location     *time.Location
+	Store        ScheduleStore
+	Logger       Logger
 }
 
 // SchedulerOption configures a Scheduler.
@@ -55,10 +55,10 @@ func WithSchedulerLocation(loc *time.Location) SchedulerOption {
 	})
 }
 
-// WithConfigProvider sets a custom config provider for the Scheduler.
-func WithConfigProvider(provider ConfigProvider) SchedulerOption {
+// WithScheduleStore sets a custom schedule store for the Scheduler.
+func WithScheduleStore(store ScheduleStore) SchedulerOption {
 	return schedulerOption(func(opts *schedulerOptions) {
-		opts.ConfigProvider = provider
+		opts.Store = store
 	})
 }
 
@@ -74,11 +74,8 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 	if redisConfig == nil {
 		return nil, ErrInvalidRedisConfig
 	}
-	if err := redisConfig.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid redis config: %w", err)
-	}
 
-	asynqClientOpt := redisConfig.ToAsynqRedisOpt()
+	redisOpt := asynqRedisOpt(redisConfig)
 
 	options := schedulerOptions{
 		Location:     time.UTC,
@@ -99,14 +96,18 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 		logger = NewDefaultLogger()
 	}
 
-	configProvider := options.ConfigProvider
-	if configProvider == nil {
-		configProvider = NewMemoryConfigProvider()
+	store := options.Store
+	if store == nil {
+		store = NewMemoryScheduleStore()
 	}
 
+	configProvider := &asynqScheduleProvider{
+		store:   store,
+		timeout: options.SyncInterval,
+	}
 	taskManager, err := asynq.NewPeriodicTaskManager(
 		asynq.PeriodicTaskManagerOpts{
-			RedisConnOpt:               asynqClientOpt,
+			RedisConnOpt:               redisOpt,
 			PeriodicTaskConfigProvider: configProvider,
 			SyncInterval:               options.SyncInterval,
 			SchedulerOpts: &asynq.SchedulerOpts{
@@ -135,49 +136,56 @@ func NewScheduler(redisConfig *RedisConfig, opts ...SchedulerOption) (*Scheduler
 	}
 
 	return &Scheduler{
-		taskManager:    taskManager,
-		configProvider: configProvider,
+		taskManager: taskManager,
+		store:       store,
 	}, nil
 }
 
-// RegisterCron schedules a new cron job using an explicit schedule identifier.
-func (s *Scheduler) RegisterCron(identifier, spec, jobType string, payload any, opts ...JobOption) (string, error) {
-	job, err := NewJob(jobType, payload, opts...)
-	if err != nil {
+// RegisterCron schedules a job on a cron expression using an explicit schedule ID.
+func (s *Scheduler) RegisterCron(ctx context.Context, id, spec string, job *Job) (string, error) {
+	if err := validateContext(ctx); err != nil {
 		return "", err
 	}
-	return s.RegisterCronJob(identifier, spec, job)
-}
-
-// RegisterCronJob schedules a new cron job using an explicit schedule identifier.
-func (s *Scheduler) RegisterCronJob(identifier, spec string, job *Job) (string, error) {
 	if _, err := cron.ParseStandard(spec); err != nil {
 		return "", fmt.Errorf("%w: %w", ErrInvalidCronSpec, err)
 	}
-	return s.configProvider.RegisterCronJob(identifier, spec, job)
-}
-
-// RegisterPeriodic schedules a new periodic job using an explicit schedule identifier.
-func (s *Scheduler) RegisterPeriodic(identifier string, interval time.Duration, jobType string, payload any, opts ...JobOption) (string, error) {
-	job, err := NewJob(jobType, payload, opts...)
-	if err != nil {
+	schedule := Schedule{
+		ID:       id,
+		Kind:     ScheduleCron,
+		CronSpec: spec,
+		Job:      job,
+		Enabled:  true,
+	}
+	if err := s.store.Put(ctx, schedule); err != nil {
 		return "", err
 	}
-	return s.RegisterPeriodicJob(identifier, interval, job)
+	return id, nil
 }
 
-// RegisterPeriodicJob schedules a new periodic job using an explicit schedule identifier.
-func (s *Scheduler) RegisterPeriodicJob(identifier string, interval time.Duration, job *Job) (string, error) {
+// RegisterInterval schedules a job at a fixed interval using an explicit schedule ID.
+func (s *Scheduler) RegisterInterval(ctx context.Context, id string, interval time.Duration, job *Job) (string, error) {
+	if err := validateContext(ctx); err != nil {
+		return "", err
+	}
 	if interval <= 0 {
 		return "", ErrInvalidPeriodicInterval
 	}
-	spec := "@every " + interval.String()
-	return s.configProvider.RegisterCronJob(identifier, spec, job)
+	schedule := Schedule{
+		ID:       id,
+		Kind:     ScheduleInterval,
+		Interval: interval,
+		Job:      job,
+		Enabled:  true,
+	}
+	if err := s.store.Put(ctx, schedule); err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
-// UnregisterCronJob removes a scheduled cron job using its identifier.
-func (s *Scheduler) UnregisterCronJob(identifier string) error {
-	return s.configProvider.UnregisterJob(identifier)
+// Unregister removes a schedule by ID.
+func (s *Scheduler) Unregister(ctx context.Context, id string) error {
+	return s.store.Delete(ctx, id)
 }
 
 // Run starts the scheduler and blocks until ctx is canceled.
@@ -211,4 +219,58 @@ func (s *Scheduler) Run(ctx context.Context) error {
 func (s *Scheduler) shutdown() {
 	s.taskManager.Shutdown()
 	s.stopped.Store(true)
+}
+
+type asynqScheduleProvider struct {
+	store   ScheduleStore
+	timeout time.Duration
+}
+
+func (p *asynqScheduleProvider) GetConfigs() ([]*asynq.PeriodicTaskConfig, error) {
+	ctx := context.Background()
+	if p.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, p.timeout)
+		defer cancel()
+	}
+
+	schedules, err := p.store.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	configs := make([]*asynq.PeriodicTaskConfig, 0, len(schedules))
+	for _, schedule := range schedules {
+		if !schedule.Enabled {
+			continue
+		}
+		spec, err := asynqScheduleSpec(schedule)
+		if err != nil {
+			return nil, err
+		}
+		task, opts, err := schedule.Job.convertToAsynqTask(schedule.Job.options)
+		if err != nil {
+			return nil, err
+		}
+		configs = append(configs, &asynq.PeriodicTaskConfig{
+			Cronspec: spec,
+			Task:     task,
+			Opts:     opts,
+		})
+	}
+	return configs, nil
+}
+
+func asynqScheduleSpec(schedule Schedule) (string, error) {
+	switch schedule.Kind {
+	case ScheduleCron:
+		return schedule.CronSpec, nil
+	case ScheduleInterval:
+		if schedule.Interval <= 0 {
+			return "", ErrInvalidPeriodicInterval
+		}
+		return "@every " + schedule.Interval.String(), nil
+	default:
+		return "", ErrInvalidScheduleKind
+	}
 }

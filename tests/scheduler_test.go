@@ -85,7 +85,7 @@ func TestSchedulerRegisterWithInvalidCronSpec(t *testing.T) {
 	require.NoError(t, err, "Failed to create scheduler")
 
 	// Register a job with an invalid cron expression to trigger the error handler.
-	_, err = scheduler.RegisterCron("error_job", "wrong cron", "error_job", nil)
+	_, err = scheduler.RegisterCron(t.Context(), "error_job", "wrong cron", newJob(t, "error_job", nil))
 
 	// Verify the error was triggered.
 	assert.ErrorIs(t, err, queue.ErrInvalidCronSpec)
@@ -100,7 +100,8 @@ func TestSchedulerPostEnqueueUsesConfiguredLogger(t *testing.T) {
 	)
 	require.NoError(t, err, "Failed to create scheduler with custom logger")
 
-	_, err = scheduler.RegisterCron("logger_test", "@every 1s", "logger_test", map[string]any{"key": "value"})
+	job := newJob(t, "logger_test", map[string]any{"key": "value"})
+	_, err = scheduler.RegisterInterval(t.Context(), "logger_test", time.Second, job)
 	require.NoError(t, err, "Failed to register cron job")
 
 	runScheduler(t, scheduler)
@@ -145,7 +146,8 @@ func TestSchedulerCronTriggerWithWorkerProcessing(t *testing.T) {
 	)
 	require.NoError(t, err, "Failed to create scheduler")
 
-	_, err = scheduler.RegisterCron(jobType, "@every 1s", jobType, payload)
+	job := newJob(t, jobType, payload)
+	_, err = scheduler.RegisterInterval(t.Context(), jobType, time.Second, job)
 	require.NoError(t, err, "Failed to register cron job")
 
 	runScheduler(t, scheduler)
@@ -180,15 +182,14 @@ func TestSchedulerPeriodicMultipleExecutions(t *testing.T) {
 
 	runWorker(t, worker)
 
-	// Set up scheduler with RegisterPeriodic.
+	// Set up scheduler with an interval schedule.
 	scheduler, err := queue.NewScheduler(redisConfig,
 		queue.WithSyncInterval(1*time.Second),
 	)
 	require.NoError(t, err, "Failed to create scheduler")
 
-	_, err = scheduler.RegisterPeriodic(
-		jobType, 1*time.Second, jobType, map[string]string{"key": "periodic"},
-	)
+	job := newJob(t, jobType, map[string]string{"key": "periodic"})
+	_, err = scheduler.RegisterInterval(t.Context(), jobType, time.Second, job)
 	require.NoError(t, err, "Failed to register periodic job")
 
 	runScheduler(t, scheduler)

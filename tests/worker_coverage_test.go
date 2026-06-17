@@ -19,9 +19,9 @@ func TestNewWorker_NilRedisConfig(t *testing.T) {
 }
 
 func TestNewWorker_InvalidRedisConfig(t *testing.T) {
-	cfg := &queue.RedisConfig{Network: "bad", Addr: ""}
-	_, err := queue.NewWorker(cfg)
-	assert.Error(t, err)
+	cfg, err := queue.NewRedisConfig(queue.WithRedisNetwork("bad"))
+	assert.Nil(t, cfg)
+	assert.ErrorIs(t, err, queue.ErrRedisUnsupportedNetwork)
 }
 
 // --- Handler validation ---

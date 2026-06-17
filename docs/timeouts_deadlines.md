@@ -4,11 +4,11 @@ The `queue` library offers mechanisms for precise control over job execution tim
 
 ## Timeouts
 
-Timeouts cap the execution duration of jobs to prevent them from running indefinitely. Exceeding the timeout causes the job to terminate and be marked as failed.
+Timeouts set a deadline on the handler context for one processing attempt. The library cannot forcibly stop arbitrary Go code; handlers must observe `ctx.Done()` and return. When a handler returns `context.DeadlineExceeded`, the error wraps `ErrJobProcessingTimeout`.
 
 ### Implementing Timeouts
 
-To set a job execution timeout, use the `WithJobTimeout` option when defining your job handler.
+To set a processing deadline, use the `WithJobTimeout` option when defining your job handler.
 
 ```go
 import (
@@ -22,7 +22,7 @@ func EmailJobHandler(ctx context.Context, delivery *queue.Delivery) error {
     return nil
 }
 
-// Create a handler for email jobs with a 30-second execution timeout
+// Create a handler for email jobs with a 30-second processing context deadline.
 handler, err := queue.NewHandler(
     "email_job",
     EmailJobHandler,

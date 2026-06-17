@@ -3,8 +3,6 @@ package tests
 import (
 	"testing"
 
-	"github.com/hibiken/asynq"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -13,7 +11,7 @@ import (
 
 // TestManagerListWorkers tests the ListWorkers method of the Manager.
 func TestManagerListWorkers(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	workers, err := manager.ListWorkers()
 	require.NoError(t, err, "Error listing workers")
@@ -22,7 +20,7 @@ func TestManagerListWorkers(t *testing.T) {
 
 // TestManagerListQueues tests the ListQueues method of the Manager.
 func TestManagerListQueues(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	queues, err := manager.ListQueues()
 	require.NoError(t, err, "Error listing queues")
@@ -31,7 +29,7 @@ func TestManagerListQueues(t *testing.T) {
 
 // TestManagerQueueInfo tests the QueueInfo method for a specific queue.
 func TestManagerQueueInfo(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 
 	queueName := queue.DefaultQueue
 	queueInfo, err := manager.QueueInfo(queueName)
@@ -40,27 +38,28 @@ func TestManagerQueueInfo(t *testing.T) {
 	t.Logf("Queue '%s' info: %+v", queueName, queueInfo)
 }
 
-// TestManagerListJobsByState tests listing jobs by their state in a specific queue.
-func TestManagerListJobsByState(t *testing.T) {
-	manager := setupTestManager()
+// TestManagerListJobs tests listing jobs by query.
+func TestManagerListJobs(t *testing.T) {
+	manager := setupTestManager(t)
 
 	queueName := queue.DefaultQueue
 	state := queue.StatePending // Example state
-	jobs, err := manager.ListJobsByState(queueName, state, 10, 1)
-	require.NoError(t, err, "Error listing jobs by state")
+	jobs, err := manager.ListJobs(queue.JobQuery{
+		Queue: queueName,
+		State: state,
+		Page:  queue.Page{Size: 10, Number: 1},
+	})
+	require.NoError(t, err, "Error listing jobs")
 	t.Logf("Found %d jobs in state '%v' in queue '%s'", len(jobs), state, queueName)
 }
 
-// setupTestManager is a helper function to initialize a Manager instance for testing.
-func setupTestManager() *queue.Manager {
-	redisConfig := getRedisConfig()
-	asynqRedisOpt := redisConfig.ToAsynqRedisOpt()
-	inspector := asynq.NewInspector(asynqRedisOpt)
-	redisClient := asynqRedisOpt.MakeRedisClient().(redis.UniversalClient)
+func setupTestManager(t *testing.T) *queue.Manager {
+	t.Helper()
 
-	manager, err := queue.NewManager(redisClient, inspector)
-	if err != nil {
-		panic(err)
-	}
+	manager, err := queue.NewManager(getRedisConfig())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, manager.Close())
+	})
 	return manager
 }

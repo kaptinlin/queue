@@ -7,7 +7,7 @@
 
 ## Trigger
 
-`queue.Scheduler` uses `asynq.PeriodicTaskManager` with explicit schedule IDs in its `ConfigProvider`. The underlying Asynq scheduler hooks expose:
+`queue.Scheduler` uses `asynq.PeriodicTaskManager` behind a queue-owned `ScheduleStore` with explicit schedule IDs. The underlying Asynq scheduler hooks expose:
 
 - `PreEnqueueFunc(task *asynq.Task, opts []asynq.Option)`
 - `PostEnqueueFunc(info *asynq.TaskInfo, err error)`
@@ -50,3 +50,34 @@ Then call pre/post hooks with that metadata alongside the runtime `TaskInfo` and
 ## Queue Workaround Policy
 
 Do not infer schedule ID from task type, payload, options, or content digest. Until Asynq exposes periodic config identity, queue hooks must either omit schedule ID or avoid exposing a hook contract that pretends schedule identity is reliable.
+
+# Asynq Inspector Error Identity
+
+## Dependency
+
+- Package: `github.com/hibiken/asynq`
+- Version: `v0.26.0`
+
+## Trigger
+
+`queue.Manager` maps Asynq inspector failures into queue-owned public sentinels such as `ErrJobNotFound`, `ErrQueueNotFound`, and `ErrQueueNotEmpty`.
+
+Some inspector paths expose typed sentinels such as `asynq.ErrTaskNotFound`, `asynq.ErrQueueNotFound`, and `asynq.ErrQueueNotEmpty`. Other not-found paths can surface through dependency error values whose available public signal is a `DebugString()` containing Redis `NOT_FOUND` text.
+
+## Expected
+
+All inspector not-found and queue-state failures should expose stable typed errors, so callers can map dependency errors without matching debug strings.
+
+## Actual
+
+The queue boundary can preserve typed Asynq sentinels when present. For some not-found forms, it must inspect `DebugString()` to distinguish a missing task from a missing queue.
+
+## Queue Workaround Policy
+
+Keep public errors queue-owned and stable. When mapping dependency errors, return both the queue sentinel and the original dependency error, for example:
+
+```go
+fmt.Errorf("%w: %w", queue.ErrJobNotFound, err)
+```
+
+This lets callers use `errors.Is` against the queue semantic error while preserving the Asynq or Redis cause for diagnostics. Keep the debug-string fallback isolated in Manager error mapping, and remove it if Asynq exposes typed sentinels for every inspector not-found path.

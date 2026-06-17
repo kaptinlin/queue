@@ -77,14 +77,18 @@ func ExampleJob_DecodePayload() {
 }
 
 func ExampleNewRedisConfig() {
-	config := queue.NewRedisConfig(
+	config, err := queue.NewRedisConfig(
 		queue.WithRedisAddress("localhost:6379"),
 		queue.WithRedisDB(1),
 		queue.WithRedisPassword("secret"),
 	)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 
-	fmt.Println(config.Addr)
-	fmt.Println(config.DB)
+	fmt.Println(config.Addr())
+	fmt.Println(config.DB())
 	// Output:
 	// localhost:6379
 	// 1
@@ -93,9 +97,9 @@ func ExampleNewRedisConfig() {
 func ExampleDefaultRedisConfig() {
 	config := queue.DefaultRedisConfig()
 
-	fmt.Println(config.Addr)
-	fmt.Println(config.Network)
-	fmt.Println(config.DB)
+	fmt.Println(config.Addr())
+	fmt.Println(config.Network())
+	fmt.Println(config.DB())
 	// Output:
 	// localhost:6379
 	// tcp
@@ -133,11 +137,11 @@ func ExampleIsValidJobState() {
 	// false
 }
 
-func ExampleNewErrRateLimit() {
-	err := queue.NewErrRateLimit(10 * time.Second)
+func ExampleNewRateLimitError() {
+	err := queue.NewRateLimitError(10 * time.Second)
 
 	fmt.Println(err.Error())
-	fmt.Println(queue.IsErrRateLimit(err))
+	fmt.Println(queue.IsRateLimitError(err))
 	// Output:
 	// rate limited: retry after 10s
 	// true
@@ -151,8 +155,8 @@ func ExampleNewSkipRetryError() {
 	// skip retry due to: invalid payload format: skip retry
 }
 
-func ExampleNewMemoryConfigProvider() {
-	provider := queue.NewMemoryConfigProvider()
+func ExampleNewMemoryScheduleStore() {
+	store := queue.NewMemoryScheduleStore()
 
 	job, err := queue.NewJob("report:generate", nil,
 		queue.WithQueue("reports"),
@@ -162,13 +166,25 @@ func ExampleNewMemoryConfigProvider() {
 		return
 	}
 
-	id, err := provider.RegisterCronJob("hourly-report", "0 * * * *", job)
+	err = store.Put(context.Background(), queue.Schedule{
+		ID:       "hourly-report",
+		Kind:     queue.ScheduleCron,
+		CronSpec: "0 * * * *",
+		Job:      job,
+		Enabled:  true,
+	})
 	if err != nil {
 		fmt.Println("error:", err)
 		return
 	}
 
-	fmt.Println("registered:", id != "")
+	schedules, err := store.List(context.Background())
+	if err != nil {
+		fmt.Println("error:", err)
+		return
+	}
+
+	fmt.Println("registered:", len(schedules) == 1)
 	// Output:
 	// registered: true
 }

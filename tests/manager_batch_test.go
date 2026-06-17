@@ -43,7 +43,7 @@ func cleanupManagerTestQueue(t *testing.T, manager *queue.Manager) {
 // --- RunJobsByState boundary cases ---
 
 func TestRunJobsByState_InvalidState(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	count, err := manager.RunJobsByState(managerTestQueue, queue.JobState("bogus"))
@@ -52,7 +52,7 @@ func TestRunJobsByState_InvalidState(t *testing.T) {
 }
 
 func TestRunJobsByState_UnsupportedStates(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	tests := []struct {
@@ -76,7 +76,7 @@ func TestRunJobsByState_UnsupportedStates(t *testing.T) {
 }
 
 func TestRunJobsByState_EmptyQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	// Ensure the queue exists but is empty by enqueuing and deleting.
@@ -98,7 +98,7 @@ func TestRunJobsByState_EmptyQueue(t *testing.T) {
 }
 
 func TestRunJobsByState_ScheduledJobs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	future := time.Now().Add(24 * time.Hour)
@@ -111,7 +111,7 @@ func TestRunJobsByState_ScheduledJobs(t *testing.T) {
 }
 
 func TestRunJobsByState_ArchivedJobs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	// Enqueue pending jobs, then archive them, then run them.
@@ -130,7 +130,7 @@ func TestRunJobsByState_ArchivedJobs(t *testing.T) {
 // --- ArchiveJobsByState boundary cases ---
 
 func TestArchiveJobsByState_InvalidState(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	count, err := manager.ArchiveJobsByState(managerTestQueue, queue.JobState("bogus"))
@@ -139,7 +139,7 @@ func TestArchiveJobsByState_InvalidState(t *testing.T) {
 }
 
 func TestArchiveJobsByState_UnsupportedStates(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	tests := []struct {
@@ -163,7 +163,7 @@ func TestArchiveJobsByState_UnsupportedStates(t *testing.T) {
 }
 
 func TestArchiveJobsByState_EmptyQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	// Ensure queue exists but is empty.
@@ -185,7 +185,7 @@ func TestArchiveJobsByState_EmptyQueue(t *testing.T) {
 }
 
 func TestArchiveJobsByState_PendingJobs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 3)
@@ -197,7 +197,7 @@ func TestArchiveJobsByState_PendingJobs(t *testing.T) {
 }
 
 func TestArchiveJobsByState_ScheduledJobs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	future := time.Now().Add(24 * time.Hour)
@@ -212,7 +212,7 @@ func TestArchiveJobsByState_ScheduledJobs(t *testing.T) {
 // --- DeleteJobsByState boundary cases ---
 
 func TestDeleteJobsByState_InvalidState(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	count, err := manager.DeleteJobsByState(managerTestQueue, queue.JobState("bogus"))
@@ -221,7 +221,7 @@ func TestDeleteJobsByState_InvalidState(t *testing.T) {
 }
 
 func TestDeleteJobsByState_UnsupportedStates(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	tests := []struct {
@@ -243,7 +243,7 @@ func TestDeleteJobsByState_UnsupportedStates(t *testing.T) {
 }
 
 func TestDeleteJobsByState_EmptyQueue(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	// Ensure queue exists but is empty.
@@ -266,7 +266,7 @@ func TestDeleteJobsByState_EmptyQueue(t *testing.T) {
 }
 
 func TestDeleteJobsByState_PendingJobs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 3)
@@ -278,7 +278,7 @@ func TestDeleteJobsByState_PendingJobs(t *testing.T) {
 }
 
 func TestDeleteJobsByState_ArchivedJobs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 2)
@@ -294,7 +294,7 @@ func TestDeleteJobsByState_ArchivedJobs(t *testing.T) {
 }
 
 func TestDeleteJobsByState_ScheduledJobs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	future := time.Now().Add(24 * time.Hour)
@@ -309,7 +309,7 @@ func TestDeleteJobsByState_ScheduledJobs(t *testing.T) {
 // --- BatchRunJobs boundary cases ---
 
 func TestBatchRunJobs_EmptySlice(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	result, err := manager.BatchRunJobs(managerTestQueue, []string{})
@@ -319,7 +319,7 @@ func TestBatchRunJobs_EmptySlice(t *testing.T) {
 }
 
 func TestBatchRunJobs_NonExistentIDs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	// Ensure queue exists.
@@ -341,7 +341,7 @@ func TestBatchRunJobs_NonExistentIDs(t *testing.T) {
 }
 
 func TestBatchRunJobs_PartialFailure(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	// Enqueue scheduled jobs (can be "run").
@@ -364,7 +364,7 @@ func TestBatchRunJobs_PartialFailure(t *testing.T) {
 // --- BatchArchiveJobs boundary cases ---
 
 func TestBatchArchiveJobs_EmptySlice(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	result, err := manager.BatchArchiveJobs(managerTestQueue, []string{})
@@ -374,7 +374,7 @@ func TestBatchArchiveJobs_EmptySlice(t *testing.T) {
 }
 
 func TestBatchArchiveJobs_NonExistentIDs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 1)
@@ -390,7 +390,7 @@ func TestBatchArchiveJobs_NonExistentIDs(t *testing.T) {
 }
 
 func TestBatchArchiveJobs_AllSucceed(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 3)
@@ -403,7 +403,7 @@ func TestBatchArchiveJobs_AllSucceed(t *testing.T) {
 }
 
 func TestBatchArchiveJobs_PartialFailure(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 2)
@@ -423,7 +423,7 @@ func TestBatchArchiveJobs_PartialFailure(t *testing.T) {
 // --- BatchDeleteJobs boundary cases ---
 
 func TestBatchDeleteJobs_EmptySlice(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	result, err := manager.BatchDeleteJobs(managerTestQueue, []string{})
@@ -433,7 +433,7 @@ func TestBatchDeleteJobs_EmptySlice(t *testing.T) {
 }
 
 func TestBatchDeleteJobs_NonExistentIDs(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 1)
@@ -449,7 +449,7 @@ func TestBatchDeleteJobs_NonExistentIDs(t *testing.T) {
 }
 
 func TestBatchDeleteJobs_AllSucceed(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 3)
@@ -462,7 +462,7 @@ func TestBatchDeleteJobs_AllSucceed(t *testing.T) {
 }
 
 func TestBatchDeleteJobs_PartialFailure(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, ids := enqueueTestJobs(t, 2)
@@ -482,7 +482,7 @@ func TestBatchDeleteJobs_PartialFailure(t *testing.T) {
 // --- Cross-operation boundary cases ---
 
 func TestRunThenDeleteByState(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	// Enqueue scheduled jobs, run them all, then delete pending.
@@ -501,7 +501,7 @@ func TestRunThenDeleteByState(t *testing.T) {
 }
 
 func TestArchiveThenRunByState(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	// Enqueue pending jobs, archive them, then run archived.
@@ -523,7 +523,7 @@ func TestArchiveThenRunByState(t *testing.T) {
 }
 
 func TestArchiveThenDeleteByState(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 3)
@@ -539,7 +539,7 @@ func TestArchiveThenDeleteByState(t *testing.T) {
 }
 
 func TestDoubleArchiveByState_ReturnsZero(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 2)
@@ -556,7 +556,7 @@ func TestDoubleArchiveByState_ReturnsZero(t *testing.T) {
 }
 
 func TestDoubleDeleteByState_ReturnsZero(t *testing.T) {
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	defer cleanupManagerTestQueue(t, manager)
 
 	client, _ := enqueueTestJobs(t, 2)

@@ -27,23 +27,23 @@ func TestNewJob(t *testing.T) {
 	}
 }
 
-func TestJob_ConvertToAsynqTask(t *testing.T) {
-	jobType := "testConversion"
+func TestJobPayloadBytesReturnsEncodedPayloadCopy(t *testing.T) {
 	payload := map[string]any{"key": "value"}
-	job := newJob(t, jobType, payload)
+	job := newJob(t, "testPayloadBytes", payload)
 
-	task, _, err := job.ConvertToAsynqTask()
-	require.NoError(t, err, "ConvertToAsynqTask should not fail")
-
-	assert.Equal(t, jobType, task.Type(), "Task type should match job type")
-
-	var taskPayload map[string]any
-	err = json.Unmarshal(task.Payload(), &taskPayload)
+	payloadBytes := job.PayloadBytes()
+	var decoded map[string]any
+	err := json.Unmarshal(payloadBytes, &decoded)
 	require.NoError(t, err, "json.Unmarshal should not fail")
 
-	if diff := cmp.Diff(payload, taskPayload); diff != "" {
-		t.Errorf("Task payload mismatch (-want +got):\n%s", diff)
+	if diff := cmp.Diff(payload, decoded); diff != "" {
+		t.Errorf("payload mismatch (-want +got):\n%s", diff)
 	}
+
+	payloadBytes[0] = 'x'
+	var decodedAgain map[string]any
+	require.NoError(t, job.DecodePayload(&decodedAgain))
+	assert.Equal(t, payload["key"], decodedAgain["key"])
 }
 
 func TestJob_DecodePayload(t *testing.T) {
@@ -93,11 +93,8 @@ func TestJobPayloadBasicType(t *testing.T) {
 	payload := "This is a test string."
 
 	job := newJob(t, jobType, payload)
-	_, _, err := job.ConvertToAsynqTask()
-	require.NoError(t, err, "Failed to convert job to task")
-
 	var decodedPayload string
-	err = job.DecodePayload(&decodedPayload)
+	err := job.DecodePayload(&decodedPayload)
 	require.NoError(t, err, "Failed to decode payload")
 
 	assert.Equal(t, payload, decodedPayload, "Decoded payload should match original")
@@ -109,14 +106,9 @@ func TestJobPayloadStruct(t *testing.T) {
 	payload := TestPayload{Name: "John Doe", Age: 30, Hobbies: []string{"Reading", "Cycling"}}
 
 	job := newJob(t, jobType, payload)
-	task, _, err := job.ConvertToAsynqTask()
-	require.NoError(t, err, "Failed to convert job to task")
-
-	// Assuming task is used later in this function.
-	_ = task
 
 	var decodedPayload TestPayload
-	err = job.DecodePayload(&decodedPayload)
+	err := job.DecodePayload(&decodedPayload)
 	require.NoError(t, err, "Failed to decode payload")
 
 	if diff := cmp.Diff(payload, decodedPayload); diff != "" {
@@ -130,14 +122,9 @@ func TestJobPayloadNestedStruct(t *testing.T) {
 	payload := NestedPayload{Data: TestPayload{Name: "Jane Doe", Age: 28, Hobbies: []string{"Skiing", "Photography"}}}
 
 	job := newJob(t, jobType, payload)
-	task, _, err := job.ConvertToAsynqTask()
-	require.NoError(t, err, "Failed to convert job to task")
-
-	// Assuming task is used later in this function.
-	_ = task
 
 	var decodedPayload NestedPayload
-	err = job.DecodePayload(&decodedPayload)
+	err := job.DecodePayload(&decodedPayload)
 	require.NoError(t, err, "Failed to decode payload")
 
 	if diff := cmp.Diff(payload, decodedPayload); diff != "" {
@@ -201,7 +188,7 @@ func TestWriteResultAndRetrieve(t *testing.T) {
 	time.Sleep(5 * time.Second)
 
 	// Initialize manager to retrieve job information
-	manager := setupTestManager()
+	manager := setupTestManager(t)
 	jobInfo, err := manager.JobInfo(queue.DefaultQueue, jobID)
 	require.NoError(t, err, "Failed to get job info")
 	assert.True(t, jobInfo.HasResult, "Job info should report a stored result")

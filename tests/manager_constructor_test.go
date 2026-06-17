@@ -4,33 +4,41 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hibiken/asynq"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kaptinlin/queue"
 )
 
-func TestNewManager_ValidatesDependencies(t *testing.T) {
+func TestNewManager_ValidatesRedisConfig(t *testing.T) {
 	t.Parallel()
 
-	_, err := queue.NewManager(nil, nil)
-	assert.ErrorIs(t, err, queue.ErrInvalidManagerClient)
+	_, err := queue.NewManager(nil)
+	assert.ErrorIs(t, err, queue.ErrInvalidRedisConfig)
 
-	client := redis.NewClient(&redis.Options{
-		Addr:        "127.0.0.1:1",
-		DialTimeout: time.Millisecond,
-	})
-	t.Cleanup(func() {
-		assert.NoError(t, client.Close())
-	})
+	_, err = queue.NewRedisConfig(
+		queue.WithRedisAddress("127.0.0.1:1"),
+		queue.WithRedisDialTimeout(-time.Millisecond),
+	)
+	assert.ErrorIs(t, err, queue.ErrRedisInvalidTimeout)
+}
 
-	_, err = queue.NewManager(client, nil)
-	assert.ErrorIs(t, err, queue.ErrInvalidManagerInspector)
+func TestNewManager_ConstructsManager(t *testing.T) {
+	t.Parallel()
 
-	inspector := asynq.NewInspector(getRedisConfig().ToAsynqRedisOpt())
-	manager, err := queue.NewManager(client, inspector)
+	redisConfig, err := queue.NewRedisConfig(
+		queue.WithRedisAddress("127.0.0.1:1"),
+		queue.WithRedisDialTimeout(time.Millisecond),
+		queue.WithRedisReadTimeout(time.Millisecond),
+		queue.WithRedisWriteTimeout(time.Millisecond),
+		queue.WithRedisPoolSize(1),
+	)
 	require.NoError(t, err)
+
+	manager, err := queue.NewManager(redisConfig)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, manager.Close())
+	})
 	assert.NotNil(t, manager)
 }

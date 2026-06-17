@@ -23,8 +23,12 @@ func TestMain(m *testing.M) {
 }
 
 func getRedisConfig() *queue.RedisConfig {
-	return queue.NewRedisConfig(
+	config, err := queue.NewRedisConfig(
 		queue.WithRedisAddress(redisAddr),
 		queue.WithRedisDB(redisDB),
 	)
+	if err != nil {
+		panic(err)
+	}
+	return config
 }

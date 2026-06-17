@@ -34,7 +34,7 @@ func TestGlobalMiddleware(t *testing.T) {
 
 	worker, err := queue.NewWorker(redisConfig)
 	require.NoError(t, err, "Failed to create worker")
-	worker.Use(globalMiddleware) // Apply the global middleware
+	require.NoError(t, worker.Use(globalMiddleware)) // Apply the global middleware
 
 	// Register a dummy job handler
 	jobType := "dummyJob"

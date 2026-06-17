@@ -20,29 +20,38 @@ func TestNewSkipRetryError(t *testing.T) {
 	assert.NotErrorIs(t, err, asynq.SkipRetry)
 }
 
-func TestErrRateLimitError(t *testing.T) {
-	err := queue.NewErrRateLimit(5 * time.Second)
+func TestNewRetryWithoutFailureError(t *testing.T) {
+	err := queue.NewRetryWithoutFailureError(assert.AnError)
 
-	var rateLimitErr *queue.ErrRateLimit
+	assert.ErrorIs(t, err, queue.ErrRetryWithoutFailure)
+	assert.ErrorIs(t, err, assert.AnError)
+	assert.ErrorIs(t, queue.NewRetryWithoutFailureError(nil), queue.ErrRetryWithoutFailure)
+}
+
+func TestRateLimitErrorError(t *testing.T) {
+	err := queue.NewRateLimitError(5 * time.Second)
+
+	var rateLimitErr *queue.RateLimitError
 	require.ErrorAs(t, err, &rateLimitErr)
 	assert.Equal(t, 5*time.Second, rateLimitErr.RetryAfter)
+	assert.ErrorIs(t, err, queue.ErrRetryWithoutFailure)
 }
 
-func TestIsErrRateLimit_Wrapped(t *testing.T) {
-	err := fmt.Errorf("wrapped: %w", queue.NewErrRateLimit(5*time.Second))
+func TestIsRateLimitError_Wrapped(t *testing.T) {
+	err := fmt.Errorf("wrapped: %w", queue.NewRateLimitError(5*time.Second))
 
-	assert.True(t, queue.IsErrRateLimit(err))
+	assert.True(t, queue.IsRateLimitError(err))
 }
 
-func TestIsErrRateLimit(t *testing.T) {
+func TestIsRateLimitError(t *testing.T) {
 	tests := []struct {
 		name string
 		err  error
 		want bool
 	}{
 		{
-			name: "direct ErrRateLimit",
-			err:  queue.NewErrRateLimit(time.Second),
+			name: "direct RateLimitError",
+			err:  queue.NewRateLimitError(time.Second),
 			want: true,
 		},
 		{
@@ -59,7 +68,7 @@ func TestIsErrRateLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := queue.IsErrRateLimit(tt.err)
+			got := queue.IsRateLimitError(tt.err)
 			assert.Equal(t, tt.want, got)
 		})
 	}

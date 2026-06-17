@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/hibiken/asynq"
-	"github.com/redis/go-redis/v9"
-
 	"github.com/kaptinlin/queue"
 )
 
@@ -19,27 +16,21 @@ func main() {
 
 func run() error {
 	// Initialize the Redis client with the necessary configuration.
-	redisConfig := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	redisConfig, err := queue.NewRedisConfig(queue.WithRedisAddress("localhost:6379"))
+	if err != nil {
+		return fmt.Errorf("invalid redis config: %w", err)
+	}
 
-	// Convert the RedisConfig to asynq.RedisClientOpt to use with asynq.NewInspector.
-	asynqRedisOpt := redisConfig.ToAsynqRedisOpt()
-
-	// Initialize the asynq Inspector using the Redis client options.
-	inspector := asynq.NewInspector(asynqRedisOpt)
-
-	// Make Redis Client
-	redisClient := asynqRedisOpt.MakeRedisClient().(redis.UniversalClient)
-	defer func() {
-		if err := redisClient.Close(); err != nil {
-			log.Printf("failed to close redis client: %v", err)
-		}
-	}()
-
-	// Create an instance of Manager using the Redis client and the asynq Inspector.
-	manager, err := queue.NewManager(redisClient, inspector)
+	// Create an instance of Manager using the Redis configuration.
+	manager, err := queue.NewManager(redisConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create manager: %w", err)
 	}
+	defer func() {
+		if err := manager.Close(); err != nil {
+			log.Printf("failed to close manager: %v", err)
+		}
+	}()
 
 	// Example operation: Listing all workers.
 	workers, err := manager.ListWorkers()
