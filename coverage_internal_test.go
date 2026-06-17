@@ -1077,6 +1077,7 @@ func TestMemoryScheduleStore_PutValidation(t *testing.T) {
 	})
 	assert.ErrorIs(t, err, ErrInvalidJob)
 
-	err = store.Put(nil, Schedule{})
+	var nilContext context.Context
+	err = store.Put(nilContext, Schedule{})
 	assert.ErrorIs(t, err, ErrInvalidContext)
 }

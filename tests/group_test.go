@@ -37,7 +37,7 @@ func TestGroupMiddleware(t *testing.T) {
 
 	// Create a group and apply the group-specific middleware
 	emailGroup := worker.Group("email")
-	emailGroup.Use(groupMiddleware)
+	require.NoError(t, emailGroup.Use(groupMiddleware))
 
 	// Register a dummy job handler within the group
 	jobType := "sendEmail"

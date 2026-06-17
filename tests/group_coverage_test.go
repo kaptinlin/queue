@@ -25,7 +25,7 @@ func TestGroupRegisterHandler(t *testing.T) {
 	}
 
 	group := worker.Group("email")
-	group.Use(mw)
+	require.NoError(t, group.Use(mw))
 
 	handler := newHandler(t, "email:send",
 		func(_ context.Context, _ *queue.Delivery) error {
